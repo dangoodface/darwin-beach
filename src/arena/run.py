@@ -19,13 +19,14 @@ import numpy as np
 from .archive import NEW, Archive
 from .config import Config, load_config
 from .evaluate import Evaluator
+from .fresh import FRESH_SEEDS, FreshCheck
 from .genome import Genome, make_genome, random_params
 from .ladder import Challenge, Ladder
 from .optim import CmaMe, EvalResult, MapElites
-from .workers import Workers
+from .workers import Workers, make_simulator
 
 # Spawn order of the root SeedSequence. Appending is safe; reordering changes every run.
-STREAM_PROBES, STREAM_OPTIM, STREAM_SEEDS, STREAM_LADDER = 0, 1, 2, 3
+STREAM_PROBES, STREAM_OPTIM, STREAM_SEEDS, STREAM_LADDER, STREAM_FRESH = 0, 1, 2, 3, 4
 RESCORE_BATCH = 256  # elites per evaluation when an era re-scores the archive; fits the kernel table
 
 
@@ -42,6 +43,7 @@ class RunContext:
     started_at: datetime
     started_mono: float = field(default_factory=time.monotonic)
     ladder: Ladder | None = None  # v1
+    fresh: FreshCheck | None = None  # the fresh-serve check; never used for selection
 
 
 @dataclass
@@ -101,7 +103,7 @@ def run(
     now: datetime | None = None,
 ) -> RunContext:
     root = np.random.SeedSequence(cfg.seed)
-    probe_ss, optim_ss, seed_ss, ladder_ss = root.spawn(4)
+    probe_ss, optim_ss, seed_ss, ladder_ss, fresh_ss = root.spawn(5)
 
     with Workers(cfg.sim_kind, cfg.kernel_path, cfg.workers, cfg.jobs_per_task) as workers:
         kernel_sha, kernel_version, genome_len, sim_scripted = workers.simulator_info
@@ -140,10 +142,15 @@ def run(
                             cfg.batch_size, cfg.init_size, cfg.sigma, cfg.crossover_frac)
         evaluator = Evaluator(workers, probes, scripted_slot, seeds, cfg.indices, cfg.max_ticks, ladder)
 
+        fresh = None
+        if sim_scripted is not None:
+            fresh_seeds = tuple(int(x) for x in fresh_ss.generate_state(FRESH_SEEDS, dtype=np.uint64))
+            fresh = FreshCheck(make_simulator(cfg.sim_kind, cfg.kernel_path), fresh_seeds, cfg.max_ticks)
+
         started = now or datetime.now(timezone.utc)
         ctx = RunContext(make_run_id(cfg.slug, started), resolved, kernel_sha, kernel_version,
                          genome_len, probes, [o for o, _ in evaluator.opponents], archive, started,
-                         ladder=ladder)
+                         ladder=ladder, fresh=fresh)
         for o in observers:
             o.on_start(ctx)
 

@@ -20,7 +20,7 @@ from .export import ancestors, champion_of
 from .genome import make_genome
 from .optim import MapElites
 from .sim import SCRIPTED_ID
-from .store import Store, store_path
+from .store import Store, data_root, store_path
 
 FILL_MARKS = (100, 200, 300)
 LIT_GENS = (0, 10, 50, 100, 200, 400, 800, 1600, 3200)
@@ -300,6 +300,15 @@ def render(d: dict) -> str:
         L.append(f"   ({c['rivals_note']})")
     else:
         L.append("   no per-rival margins on record" + (f" ({c['rivals_note']})" if c["rivals_note"] else ""))
+    ex = d.get("exported")
+    if ex:
+        L.append(f"   graded serves: {ex['beats_coach']} cells beat the coach")
+        fr = ex.get("fresh")
+        if fr:
+            ch = fr["champion"]
+            L.append(f"   fresh serves ({fr['seeds']} new seeds, {fr['matches']} matches each): {fr['beats_coach']} of "
+                     f"{fr['checked']} checked elites win more than half"
+                     + (f"; the best elite won {ch['won']} of {fr['matches']}, margin {ch['margin']:+.2f}" if ch else ""))
     ln = c["lineage"]
     ops = ", ".join(f"{k} {v}" for k, v in sorted(ln["operators"].items()))
     L.append(f"   ancestors on record: {ln['ancestors']}; longest single line of descent: {ln['line_length']} genomes "
@@ -327,6 +336,15 @@ def render(d: dict) -> str:
     return "\n".join(L)
 
 
+def exported_stats(run_id: str, root: Path | None = None) -> dict | None:
+    """The graded and fresh beats-the-coach figures the exporter last wrote, if it has."""
+    try:
+        stats = json.loads(((root or data_root()) / "out" / run_id / "latest.json").read_text())["stats"]
+    except (OSError, ValueError, KeyError):
+        return None
+    return {"beats_coach": stats.get("beats_coach"), "fresh": stats.get("fresh")}
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
@@ -352,5 +370,6 @@ def main(argv: list[str] | None = None) -> int:
         except (ValueError, OSError, ImportError, FileNotFoundError) as e:
             print(f"note: simulator not available ({e}); the champion's win counts are skipped")
     d = summarize(store, args.run_id, args.lit_floor, sim, not args.no_candidates)
+    d["exported"] = exported_stats(args.run_id, args.root)
     print(json.dumps(d, indent=2) if args.json else render(d))
     return 0

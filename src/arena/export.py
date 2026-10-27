@@ -15,6 +15,8 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+import numpy as np
+
 from .sim import DESCRIPTOR_NAMES, SCRIPTED_ID
 from .store import Store, data_root
 
@@ -181,6 +183,8 @@ def export_run(
     root: Path | None = None,
     now: datetime | None = None,
     write_full: bool = True,
+    fresh=None,
+    fresh_history: dict[int, int] | None = None,
 ) -> Path:
     root = root or data_root()
     now = now or datetime.now(timezone.utc)
@@ -225,6 +229,24 @@ def export_run(
             raise ValueError("kernel file does not match the sha recorded for this run")
         _write_once(out / "kernel" / f"{kernel_sha}.wasm", blob)
 
+    # fresh-serve check: the best elite and every elite that beats the scripted bot on the graded serves
+    probe_ids = json.loads(run["probe_ids_json"])
+    fresh_res: dict = {}
+    if fresh is not None:
+        pick = {gid for gid in live if probe_ids and probe_ids[0] == SCRIPTED_ID
+                and by_id[gid]["margins"] and by_id[gid]["margins"][0] > 0}
+        if best is not None:
+            pick.add(best)
+        fresh_res = fresh.check({gid: np.frombuffer(store.params(gid), dtype=np.float32) for gid in sorted(pick)})
+    fresh_stats = None
+    if fresh is not None:
+        fresh_stats = {"seeds": len(fresh.seeds), "matches": fresh.matches, "checked": len(fresh_res),
+                       "beats_coach": sum(1 for r in fresh_res.values() if r.won > fresh.matches // 2),
+                       "champion": ({"won": fresh_res[best].won, "margin": fresh_res[best].margin}
+                                    if best in fresh_res else None)}
+        if fresh_history is not None and last["gen"] not in fresh_history:
+            fresh_history[last["gen"]] = fresh_stats["beats_coach"]
+
     grid = cfg["grid"]
     floor = float(grid.get("lit_floor", 0.0))
     cells = []
@@ -234,6 +256,7 @@ def export_run(
             "i": cell[0], "j": cell[1], "genome_id": gid, "fitness": fitness[gid], "rating": rating.get(gid),
             "lit": fitness[gid] >= floor,
             "bd": e["bd"], "gen": e["gen"], "era": e["era"], "margins": e["margins"], "desc": e["desc"],
+            "fresh": ({"won": fresh_res[gid].won, "margin": fresh_res[gid].margin} if gid in fresh_res else None),
             "replay": {"seed": _json_seed(e["replay_seed"]), "opponent_id": e["replay_opponent_id"],
                        "side": e["replay_side"], "final_hash": e["replay_final_hash"],
                        "ticks": e["replay_ticks"],
@@ -258,6 +281,7 @@ def export_run(
         "stats": {"filled": last["filled"], "lit": sum(1 for c in cells if c["lit"]),
                   "beats_coach": coach_by_gen[last["gen"]],
                   "qd_score": last["qd_score"], "champion_id": champion, "best_id": best,
+                  "fresh": fresh_stats,
                   "champion_rating": champion_rating, "matches_total": last["matches_total"],
                   "matches_per_s": last["matches_total"] / elapsed if elapsed > 0 else 0.0,
                   "elapsed_s": elapsed},
@@ -274,10 +298,15 @@ def export_run(
         held = [m["rating"] for m in members if m["gen"] <= gen]
         return held[-1] if held else None
 
+    def fresh_at(gen: int) -> int | None:
+        """beats_coach_fresh at the last export at or before `gen`; null before the first one."""
+        held = [v for g, v in sorted((fresh_history or {}).items()) if g <= gen]
+        return held[-1] if held else None
+
     _write_json(out / "curve.json", {"run_id": run_id, "points": thin([
         {"gen": g["gen"], "t": g["t_s"], "filled": g["filled"], "lit": lit_by_gen.get(g["gen"], 0),
-         "beats_coach": coach_by_gen[g["gen"]], "qd_score": g["qd_score"],
-         "champion_rating": champion_rating_at(g["gen"]), "best_fitness": g["best_fitness"],
+         "beats_coach": coach_by_gen[g["gen"]], "beats_coach_fresh": fresh_at(g["gen"]),
+         "qd_score": g["qd_score"], "champion_rating": champion_rating_at(g["gen"]), "best_fitness": g["best_fitness"],
          "era": g["era"], "matches_total": g["matches_total"]}
         for g in gens])})
 
@@ -336,6 +365,7 @@ class ExportObserver:
         self.so, self.every_s, self.root = store_observer, every_s, root
         self.tree_full_every_s = tree_full_every_s
         self._last = self._last_full = 0.0
+        self._fresh_history: dict[int, int] = {}  # generation of an export -> elites that beat the coach on fresh serves
 
     def on_start(self, ctx) -> None:
         self._last = self._last_full = time.monotonic()
@@ -350,7 +380,8 @@ class ExportObserver:
             self._export(ctx, full=True)
 
     def _export(self, ctx, full: bool) -> None:
-        export_run(self.so.store, ctx.run_id, self.root, write_full=full)
+        export_run(self.so.store, ctx.run_id, self.root, write_full=full, fresh=getattr(ctx, "fresh", None),
+                   fresh_history=self._fresh_history)
         self._last = time.monotonic()
         if full:
             self._last_full = self._last
