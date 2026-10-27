@@ -204,9 +204,11 @@ for (const style of Object.keys(STYLES)) {
   const [title, label, blurb] = STYLES[style];
   const f = r.final.fresh, fr = (id) => `${f[id]?.won ?? "?"} of ${f[id]?.n ?? 16}`;
   const rec = `On new serves: #10 ${fr(ch(10))}, run 4's champion ${fr(c4.genome_id)}, the coach ${fr(COACH)}.`;
-  const p = r.final.proof ?? {};
+  const p = r.final.proof ?? {}, md = r.final.descriptors_fresh_mean ?? {};
+  const pct = (x) => `${Math.round(100 * x)} per cent`;
   const proof = style === "flat_earther" ? (p.jumps_max === 0 ? " It jumped zero times in every one of them." : ` Jumps per match: up to ${p.jumps_max}.`)
-    : style === "kangaroo" ? ` It jumped ${Math.round(p.jumps_min ?? 0)} to ${Math.round(p.jumps_max ?? 0)} times a match.` : "";
+    : style === "kangaroo" ? ` It jumped ${Math.round(p.jumps_min ?? 0)} to ${Math.round(p.jumps_max ?? 0)} times a match.`
+    : style === "joga_bonito" ? ` It wins ${pct(md.juggled_points / md.points)} of its points by juggling, and its longest run averages ${md.max_streak.toFixed(1)} touches. In this match, watch the very first point.` : "";
   let twinNote = "";
   if (twin) {
     const t = result(twin).final.fresh;
@@ -217,6 +219,9 @@ for (const style of Object.keys(STYLES)) {
     if (style === "kangaroo") twinNote += ` The twin chose to keep jumping anyway, ${Math.round(td.jumps ?? 0)} times a match: both started from the same high-flying brain.`;
     if (style === "sprinter" && tp.ticks_per_point && p.ticks_per_point)
       twinNote += ` Its points last ${(p.ticks_per_point / 30).toFixed(1)} seconds against the twin's ${(tp.ticks_per_point / 30).toFixed(1)}.`;
+    if (style === "long_ball") twinNote += ` Its shots leave at speed ${md.mean_speed_after_hit.toFixed(0)} against the twin's ${td.mean_speed_after_hit.toFixed(0)}.`;
+    if (style === "lob_artist") twinNote += ` Its balls leave at speed ${md.mean_speed_after_hit.toFixed(0)} against the twin's ${td.mean_speed_after_hit.toFixed(0)}, just as high, so they hang.`;
+    if (style === "joga_bonito") twinNote += ` The twin juggles ${pct(td.juggled_points / td.points)} of its points.`;
   }
   // The generality check: fresh serves against every member of run 5's hall of fame, not just the three it trained on.
   let hof = "";
