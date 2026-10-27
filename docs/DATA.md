@@ -44,6 +44,7 @@ local dev server at `/`. No subdomain and no r2.dev address.
   "kernel_sha": "…", "kernel_version": 1,
   "generated_at": "2026-11-01T12:00:00Z",
   "generation": 412, "era": 0,
+  "probes": ["scripted-v1", "…", "…", "…"],
   "grid": {
     "descriptors": ["court_position", "airtime"],
     "indices": [0, 1],
@@ -53,6 +54,7 @@ local dev server at `/`. No subdomain and no r2.dev address.
   },
   "cells": [
     {"i": 3, "j": 17, "genome_id": "…", "fitness": 2.4, "rating": 1180.5, "lit": true,
+     "margins": [-1.25, 2.88, 4.25, 3.75],
      "bd": [0.19, 0.86], "gen": 388, "era": 0,
      "replay": {"seed": 123456789, "opponent_id": "…", "side": "A",
                 "final_hash": "0x…", "ticks": 2210, "points": [5, 3]}}
@@ -69,6 +71,15 @@ gets some bot within seconds of a run starting, so "filled" is not the show;
 a cell is `lit` when its elite's fitness reaches `grid.lit_floor` (0.0: it
 holds its own against the rivals on average), and `stats.lit` counts them.
 The page draws unlit cells dim and lit cells by fitness above the floor.
+
+`probes` is the run's probe set in order, the scripted bot first when the run
+has one, then the frozen probe genomes (the runs row's `probe_ids_json`).
+`cells[].margins` has one number per probe in that order: the elite's mean
+score margin against that opponent over the evaluation seeds on both sides,
+so the mean of `margins` equals `fitness` to floating-point error. It is
+`null` for elites recorded before margins existed (the page treats null as
+"no breakdown"). "Beats the coach" is `margins[0] > 0` when `probes[0]` is
+`scripted-v1`. Added 27 October 2026.
 Decided 27 October 2026 after the first real run filled 400 of 400 in eight
 seconds and took minutes to light them. Rating is
 Elo against the frozen anchors (v1; null in v0). `replay` is the match the
