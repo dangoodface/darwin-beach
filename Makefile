@@ -1,5 +1,7 @@
 # Five commands for the arena. `make help` lists them.
-.PHONY: help test train upload dev verify parity bench
+.PHONY: help test train upload dev verify kernel parity bench
+
+WASM := kernel/target/wasm32-unknown-unknown/release/slime_kernel.wasm
 
 help:
 	@echo "make test      Python tests"
@@ -7,8 +9,9 @@ help:
 	@echo "make upload    dry-run mirror of out/ into ~/.local/share/arena/mirror"
 	@echo "make verify    re-run every live cell's replay and compare hashes: make verify RUN=<run_id>"
 	@echo "make dev       the page (placeholder until web/ exists)"
-	@echo "make parity    twin test, Python against Node (TODO: Track K's command)"
-	@echo "make bench     speed test on 15 workers (TODO: Track K's command)"
+	@echo "make kernel    build the game file and say whether it matches one in artifacts/kernel/"
+	@echo "make parity    twin test: 1,000 matches in wasmtime and in Node, tick by tick"
+	@echo "make bench     speed test on 1, 8 and 15 workers, under the training limits"
 
 test:
 	uv run pytest -q
@@ -27,9 +30,18 @@ verify:
 dev:
 	@echo "TODO: the page track adds 'npm run dev' in web/ (serves web/ plus a data/ link to out/)"
 
-# TODO: fill these in from Track K's README section once the kernel lands.
-parity:
-	@echo "TODO: parity (see kernel README section)"; exit 1
+# +1.95.0 on purpose: RUSTUP_TOOLCHAIN in the shell would override
+# kernel/rust-toolchain.toml, and another compiler makes another file.
+kernel:
+	cargo +1.95.0 build --release --target wasm32-unknown-unknown --manifest-path kernel/Cargo.toml
+	@sha=$$(sha256sum $(WASM) | cut -d' ' -f1); \
+	if [ -f artifacts/kernel/$$sha.wasm ]; then echo "kernel $$sha: the same bytes as artifacts/kernel/$$sha.wasm"; \
+	else echo "kernel $$sha is new, not in artifacts/kernel/: a changed kernel needs a version bump (docs/ABI.md)"; fi
 
-bench:
-	@echo "TODO: bench (see kernel README section)"; exit 1
+parity: kernel
+	cargo +1.95.0 test --quiet --manifest-path kernel/Cargo.toml
+	uv run pytest -q tests/test_kernel.py tests/test_parity.py
+
+bench: kernel
+	systemd-run --user --scope -q -p MemoryMax=4G -p CPUQuota=1400% \
+	  uv run python tools/bench.py

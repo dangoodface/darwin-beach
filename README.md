@@ -45,8 +45,36 @@ uv run python -m arena.run --generations 200   # a practice run on the pretend g
 uv run python tools/upload.py --to ~/.local/share/arena/mirror --dry-run
 ```
 
-The game build, the twin test (the same matches in Python and in a browser)
-and the speed test arrive with the kernel; this list grows as they land.
+The game file:
+
+```
+make kernel    # build it, and say whether it is one of the files in artifacts/kernel/
+make parity    # the twin test: 1,000 matches in Python and in Node, compared tick by tick
+make bench     # the speed test, under the memory and CPU limits training uses
+```
+
+`make kernel` runs `cargo +1.95.0 build --release --target
+wasm32-unknown-unknown --manifest-path kernel/Cargo.toml`. The `+1.95.0` is
+deliberate: a different compiler makes a different file, and a shell that
+sets `RUSTUP_TOOLCHAIN` (this machine's sets it to `stable`) quietly
+overrides `kernel/rust-toolchain.toml`. Every game file the arena has used
+stays in `artifacts/kernel/`, named by its sha256; version 1 is
+`5487b2a6…` (the full sha is in that folder's README).
+
+Speed on 27 October 2026 (Ryzen 7 5700X, 8 cores and 16 threads; MemoryMax
+4G, CPUQuota 1400%; batches of 100 matches), from `make bench`:
+
+| Full matches a second | 1 process | 8 processes | 15 processes |
+|---|---|---|---|
+| Training: fresh bots against the probe set | 2,895 | 22,180 | 22,975 |
+| Floor: two bots, every match run to the 3,000-tick cap | 539 | 4,166 | 4,258 |
+
+The goal was 1,000 full matches a second on 15 processes. Fresh bots lose
+points quickly (about 650 ticks a match), so the floor row is the honest
+one: it divides the ticks a second of the dearest matches (two bots, no
+scripted side) by 3,000, the speed even if every match went the distance.
+Past 8 processes the gain is small: the second thread on each core adds
+little to this kind of arithmetic.
 
 ## Licence
 
