@@ -1,0 +1,14 @@
+# Mirrors $ARENA_DATA/out to the target. Starts as a local dry-run mirror; switch the
+# ExecStart to `--r2` (and fill the EnvironmentFile) once Daniel has made the bucket.
+[Unit]
+Description=Slime arena upload (content-addressed mirror of out/)
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/projects/arena-trainer
+Environment=ARENA_DATA=%h/.local/share/arena
+# optional file, outside the repo, filled from pass; the leading '-' means "fine if absent"
+EnvironmentFile=-%h/.config/arena/r2.env
+ExecStart=%h/projects/arena-trainer/.venv/bin/python tools/upload.py --to %h/.local/share/arena/mirror
+MemoryMax=512M
+Nice=10
