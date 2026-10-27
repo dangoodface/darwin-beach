@@ -105,6 +105,7 @@ def export_run(
     run_id: str,
     root: Path | None = None,
     now: datetime | None = None,
+    write_full: bool = True,
 ) -> Path:
     root = root or data_root()
     now = now or datetime.now(timezone.utc)
@@ -190,7 +191,8 @@ def export_run(
 
     keep = set(lineage) | live | {n["id"] for n in nodes[-TREE_RECENT:]}
     _write_json(out / "tree.json", tree([n for n in nodes if n["id"] in keep]))
-    _write_json(out / "tree-full.json", tree(nodes))
+    if write_full:
+        _write_json(out / "tree-full.json", tree(nodes))
 
     _update_index(root, run_id, cfg["slug"], run["started_at"], last["gen"])
     return out
@@ -216,21 +218,26 @@ class ExportObserver:
     calls on_end in reverse, so the final export runs while the store is still open.
     """
 
-    def __init__(self, store_observer, every_s: float = 60.0, root: Path | None = None) -> None:
+    def __init__(self, store_observer, every_s: float = 60.0, root: Path | None = None,
+                 tree_full_every_s: float = 3600.0) -> None:
         self.so, self.every_s, self.root = store_observer, every_s, root
-        self._last = 0.0
+        self.tree_full_every_s = tree_full_every_s
+        self._last = self._last_full = 0.0
 
     def on_start(self, ctx) -> None:
-        self._last = time.monotonic()
+        self._last = self._last_full = time.monotonic()
 
     def on_generation(self, ctx, info) -> None:
-        if time.monotonic() - self._last >= self.every_s:
-            self._export(ctx)
+        now = time.monotonic()
+        if now - self._last >= self.every_s:
+            self._export(ctx, full=now - self._last_full >= self.tree_full_every_s)
 
     def on_end(self, ctx, info) -> None:
         if info is not None:
-            self._export(ctx)
+            self._export(ctx, full=True)
 
-    def _export(self, ctx) -> None:
-        export_run(self.so.store, ctx.run_id, self.root)
+    def _export(self, ctx, full: bool) -> None:
+        export_run(self.so.store, ctx.run_id, self.root, write_full=full)
         self._last = time.monotonic()
+        if full:
+            self._last_full = self._last
