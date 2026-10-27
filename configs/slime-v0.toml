@@ -14,7 +14,8 @@ descriptors = ["court_position", "airtime"]
 indices = [0, 1]             # positions in the ABI descriptor block
 bounds = [[0.0, 1.0], [0.0, 1.0]]
 resolution = [20, 20]
-qd_offset = 5.0              # fitness is a margin of about -5..5; this keeps QD-score monotone
+qd_offset = 5.0
+lit_floor = 0.0              # a cell lights on the page once its elite's fitness (margin against the rivals) reaches this              # fitness is a margin of about -5..5; this keeps QD-score monotone
 
 [optim]
 batch_size = 64              # candidates per generation

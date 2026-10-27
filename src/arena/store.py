@@ -161,6 +161,11 @@ class Store:
             cells[tuple(json.loads(cell_json))] = gid
         return cells
 
+    def events(self, run_id: str) -> list[tuple[int, tuple[int, ...], str, float]]:
+        """Every archive event in order: (gen, cell, genome_id, fitness)."""
+        cur = self.db.execute("SELECT gen, cell_json, genome_id, fitness FROM archive_events WHERE run_id=? ORDER BY id", (run_id,))
+        return [(gen, tuple(json.loads(cj)), gid, fit) for gen, cj, gid, fit in cur.fetchall()]
+
     def cell_of_entrants(self, run_id: str) -> dict[str, tuple[int, ...]]:
         """Last cell each genome was written to."""
         out: dict[str, tuple[int, ...]] = {}
