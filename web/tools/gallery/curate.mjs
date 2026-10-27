@@ -1,7 +1,7 @@
 // Picks the replay gallery's matches by playing them on the real kernel, and writes
 // gallery.json: every match as seed + two brains, with the hash and score it must land on.
 // Usage: node tools/gallery/curate.mjs [--out file]
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { Kernel, SCRIPTED_SLOT } from "../../src/kernel.ts";
@@ -16,7 +16,15 @@ const RUN = {
 };
 const COACH = "scripted-v1";
 const latest = Object.fromEntries(Object.entries(RUN).map(([k, d]) => [k, JSON.parse(readFileSync(join(OUT, d, "latest.json"), "utf8"))]));
-const wasm = readFileSync(join(OUT, RUN.r4, "kernel", `${latest.r4.kernel_sha}.wasm`));
+const ARENA = process.env.ARENA_DATA ?? join(homedir(), ".local/share/arena");
+const SPEC = join(ARENA, "specialists");
+// Specialists run kernel version 2 (juggle counters; every older replay lands on the same hash),
+// so the gallery uses the newest kernel any specialist carries, else run 4's.
+const specRuns = existsSync(SPEC) ? readdirSync(SPEC).filter((d) => existsSync(join(SPEC, d, "result.json"))).sort() : [];
+const result = (d) => JSON.parse(readFileSync(join(SPEC, d, "result.json"), "utf8"));
+const v2 = specRuns.map((d) => ({ d, r: result(d) })).filter(({ r }) => r.kernel_version >= 2).at(-1);
+const kernelPath = v2 ? join(SPEC, v2.d, "kernel", `${v2.r.kernel_sha}.wasm`) : join(OUT, RUN.r4, "kernel", `${latest.r4.kernel_sha}.wasm`);
+const wasm = readFileSync(kernelPath);
 const kernel = await Kernel.load(wasm);
 const k = kernel;
 // The rally scan plays 2,000 stored matches: a second kernel whose slots 0 and 1 get overwritten.
@@ -31,7 +39,7 @@ function scanSlot(i, run, id) {
 const brains = {};
 function slot(run, id) {
   if (id === COACH) return SCRIPTED_SLOT;
-  const b = readFileSync(join(OUT, RUN[run], "genomes", `${id}.bin`));
+  const b = readFileSync(run.startsWith("spec:") ? join(SPEC, run.slice(5), "genomes", `${id}.bin`) : join(OUT, RUN[run], "genomes", `${id}.bin`));
   brains[id] = b.toString("base64");
   return k.loadGenome(id, b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
 }
@@ -175,8 +183,47 @@ add({ act: 3, title: "Best of the night", left: { label: "CHAMP #10", kind: "bot
   caption: `The two coach-beaters, bred on different seeds, meet for the first time. Over 100 serves, run 5's champion wins ${fin.wins} and run 4's wins ${fin.of - fin.wins}. This is one of the ${leftWins ? fin.wins : fin.of - fin.wins}.` },
   { l: "r5", r: "r4" }, c10, c4.genome_id, typical(fin.games, leftWins), () => ({}));
 
+// ---------- act 4: the specialists ----------
+// Each style is trained against #10, run 4's champion and the coach, with a rule it cannot break,
+// and judged on serves it never trained on. One-minute smoke runs do not count.
+const STYLES = {
+  flat_earther: ["The Flat-Earther", "FLAT-EARTHER", "Never jumps. Its jump button is wired off, so every return comes from the sand."],
+  all_rounder: ["The All-Rounder", "ALL-ROUNDER", "No gimmick: it must beat all three rivals at once. The control for every other specialist."],
+  kangaroo: ["The Kangaroo", "KANGAROO", "Always jumping. Its jump button is wired on, so it is airborne whenever it can be."],
+  sprinter: ["The Sprinter", "SPRINTER", "Paid to win fast: every tick a point lasts costs it score."],
+  long_ball: ["Long Ball", "LONG BALL", "Only hard, low, deep shots, or it is thrown out."],
+  lob_artist: ["The Lob Artist", "LOB ARTIST", "Only slow, high balls, or it is thrown out."],
+  joga_bonito: ["Joga Bonito", "JOGA BONITO", "Paid to juggle: four or more touches in a row, crossing half its court, then the kill."],
+};
+const ROUND = { [ch(10)]: "CHAMP #10", [c4.genome_id]: "CHAMP R4", [COACH]: "COACH" };
+for (const style of Object.keys(STYLES)) {
+  const runs = specRuns.filter((d) => { const r = result(d); return r.style === style && r.elapsed_s >= 600; });
+  const main = runs.filter((d) => !result(d).twin).at(-1);
+  if (!main) continue;
+  const r = result(main), twin = runs.filter((d) => result(d).twin).at(-1);
+  const [title, label, blurb] = STYLES[style];
+  const f = r.final.fresh, fr = (id) => `${f[id]?.won ?? "?"} of ${f[id]?.n ?? 16}`;
+  const rec = `On new serves: #10 ${fr(ch(10))}, run 4's champion ${fr(c4.genome_id)}, the coach ${fr(COACH)}.`;
+  const p = r.final.proof ?? {};
+  const proof = style === "flat_earther" ? (p.jumps_max === 0 ? " It jumped zero times in every one of them." : ` Jumps per match: up to ${p.jumps_max}.`)
+    : style === "kangaroo" ? ` It jumped ${Math.round(p.jumps_min ?? 0)} to ${Math.round(p.jumps_max ?? 0)} times a match.` : "";
+  let twinNote = "";
+  if (twin) {
+    const t = result(twin).final.fresh;
+    const tw = [ch(10), c4.genome_id, COACH].map((id) => t[id]?.won ?? 0).reduce((a, b) => a + b, 0);
+    const me = [ch(10), c4.genome_id, COACH].map((id) => f[id]?.won ?? 0).reduce((a, b) => a + b, 0);
+    twinNote = ` Its twin, trained the same way without the rule, wins ${tw} of 48 and this one ${me}: ${tw === me ? "the rule cost it nothing we can measure" : tw > me ? `the rule costs ${tw - me} wins` : `the rule helped, by ${me - tw} wins`}.`;
+  }
+  // The showcase match against the best bot of the night, else the first one listed.
+  const show = r.final.showcase.find((m) => m.rival_id === ch(10)) ?? r.final.showcase[0];
+  const meSide = { label, kind: "bot" }, them = { label: ROUND[show.rival_id] ?? "RIVAL", kind: show.rival_id === COACH ? "coach" : "bot" };
+  const a = show.side !== "B", rivalRun = show.rival_id === c4.genome_id ? "r4" : "r5";
+  add({ act: 4, title, left: a ? meSide : them, right: a ? them : meSide, caption: `${blurb} Trained 20 minutes against three rivals. ${rec}${proof}${twinNote}` },
+    { l: a ? `spec:${main}` : rivalRun, r: a ? rivalRun : `spec:${main}` }, a ? r.final.genome_id : show.rival_id, a ? show.rival_id : r.final.genome_id, BigInt(show.seed), () => ({}));
+}
+
 const args = process.argv.slice(2);
 const out = args[args.indexOf("--out") + 1] ?? "gallery.json";
 const used = Object.fromEntries(matches.flatMap((m) => [m.left.id, m.right.id]).filter((id) => id !== COACH).map((id) => [id, brains[id]]));
-writeFileSync(out, JSON.stringify({ kernel: latest.r4.kernel_sha, made: new Date().toISOString(), matches, brains: used }));
+writeFileSync(out, JSON.stringify({ kernel: kernelPath, made: new Date().toISOString(), matches, brains: used }));
 console.log(`wrote ${out}: ${matches.length} matches, ${Object.keys(used).length} brains`);

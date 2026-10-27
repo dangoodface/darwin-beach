@@ -5,14 +5,14 @@ import { drawCourt, type CourtColours } from "./court.ts";
 
 type Side = { id: string; label: string; kind: "bot" | "coach" };
 type Match = {
-  act: 1 | 2 | 3; title: string; caption: string; left: Side; right: Side;
+  act: 1 | 2 | 3 | 4; title: string; caption: string; left: Side; right: Side;
   seed: string; ticks: number; hash: string; points: [number, number]; from?: number;
 };
 type Gallery = { kernel: string; matches: Match[]; brains: Record<string, string> };
 
 const TICK_MS = 1000 / 30;
 const MAX_TICKS = 3000;
-const ACTS = { 1: "LEARNING", 2: "FUNSIES", 3: "THE BEST" } as const;
+const ACTS = { 1: "LEARNING", 2: "FUNSIES", 3: "THE BEST", 4: "THE SPECIALISTS" } as const;
 
 const $ = (id: string) => document.getElementById(id)!;
 const bytes = (b64: string) => Uint8Array.from(atob(b64.trim()), (c) => c.charCodeAt(0));
