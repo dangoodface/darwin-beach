@@ -34,11 +34,19 @@ class Config:
     eval_seeds: tuple[int, ...] = field(default_factory=tuple)  # empty: drawn from the run seed
     export_every_s: float = 60.0
     tree_full_every_s: float = 3600.0  # tree-full.json grows without bound: at the end, and at most this often
+    # v1, the honest ladder (src/arena/ladder.py); off keeps the v0 behaviour
+    ladder_enabled: bool = False
+    ladder_check_every: int = 10  # generations between promotion checks
+    ladder_seeds: int = 50  # promotion and champion ratings: this many seeds, each on both sides
+    ladder_threshold: float = 0.55  # share of the head-to-head a challenger must win
+    ladder_cycle_window: int = 5  # a new champion's results against this many earlier members are kept as the cycle check
+    ladder_seed_list: tuple[int, ...] = field(default_factory=tuple)  # empty: drawn from the run seed
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Config":
         sim, grid, opt = d.get("sim", {}), d.get("grid", {}), d.get("optim", {})
         wk, ev, ex = d.get("workers", {}), d.get("eval", {}), d.get("export", {})
+        ld = d.get("ladder", {})
         base = cls()
         cfg = cls(
             slug=d.get("slug", base.slug),
@@ -63,6 +71,12 @@ class Config:
             eval_seeds=tuple(int(s) for s in ev.get("eval_seeds", ())),
             export_every_s=float(ex.get("every_s", base.export_every_s)),
             tree_full_every_s=float(ex.get("tree_full_every_s", base.tree_full_every_s)),
+            ladder_enabled=bool(ld.get("enabled", base.ladder_enabled)),
+            ladder_check_every=int(ld.get("check_every", base.ladder_check_every)),
+            ladder_seeds=int(ld.get("seeds", base.ladder_seeds)),
+            ladder_threshold=float(ld.get("threshold", base.ladder_threshold)),
+            ladder_cycle_window=int(ld.get("cycle_window", base.ladder_cycle_window)),
+            ladder_seed_list=tuple(int(s) for s in ld.get("seed_list", ())),
         )
         cfg.validate()
         return cfg
@@ -79,6 +93,10 @@ class Config:
             raise ValueError("workers.jobs_per_task must be 1..256 (the kernel's batch_capacity)")
         if self.probe_count + int(self.scripted_probe) < 1 or self.seeds_per_probe < 1 or self.batch_size < 1:
             raise ValueError("the probe set must be non-empty, and seeds_per_probe and batch_size at least 1")
+        if self.ladder_check_every < 1 or self.ladder_seeds < 1 or self.ladder_cycle_window < 1:
+            raise ValueError("ladder.check_every, ladder.seeds and ladder.cycle_window must be at least 1")
+        if not 0.5 <= self.ladder_threshold <= 1.0:
+            raise ValueError("ladder.threshold must be between 0.5 and 1")
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe form for the store; u64 seeds travel as decimal strings."""
@@ -94,6 +112,10 @@ class Config:
             "eval": {"scripted_probe": self.scripted_probe, "probe_count": self.probe_count, "seeds_per_probe": self.seeds_per_probe,
                      "eval_seeds": [str(s) for s in self.eval_seeds]},
             "export": {"every_s": self.export_every_s, "tree_full_every_s": self.tree_full_every_s},
+            "ladder": {"enabled": self.ladder_enabled, "check_every": self.ladder_check_every,
+                       "seeds": self.ladder_seeds, "threshold": self.ladder_threshold,
+                       "cycle_window": self.ladder_cycle_window,
+                       "seed_list": [str(s) for s in self.ladder_seed_list]},
         }
 
 

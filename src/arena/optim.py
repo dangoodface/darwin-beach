@@ -30,6 +30,7 @@ class EvalResult(NamedTuple):
     bd: tuple[float, ...]
     fitness: float
     replay: Replay | None = None
+    rating: float | None = None  # v1: Elo against the ladder members; None in v0
 
 
 class Optimizer(Protocol):
