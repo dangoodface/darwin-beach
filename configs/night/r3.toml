@@ -1,0 +1,36 @@
+# Night run 3 (27 October 2026, about 02:10): the coach as the headline. Eight seeds per probe, so
+# "beats the coach" rests on 16 matches; all eight descriptors exported; otherwise run 2's rules.
+slug = "night-r3"
+seed = 20261029
+
+[sim]
+kind = "kernel"
+kernel_path = "artifacts/kernel/5487b2a61f66880a4bd468957b6f662cb0f5afd05ab8ae7ac6736a81b025674a.wasm"
+max_ticks = 3000
+
+[grid]
+descriptors = ["court_position", "airtime"]
+indices = [0, 1]             # positions in the ABI descriptor block
+bounds = [[0.0, 1.0], [0.0, 1.0]]
+resolution = [20, 20]
+qd_offset = 5.0
+lit_floor = 0.0              # a cell lights on the page once its elite's fitness (margin against the rivals) reaches this              # fitness is a margin of about -5..5; this keeps QD-score monotone
+
+[optim]
+batch_size = 64              # candidates per generation
+init_size = 100              # random genomes until this many cells are filled
+sigma = 0.1
+crossover_frac = 0.5
+
+[workers]
+count = 8                    # 8 cores: 8 workers give 97% of 15 and leave the rest to the loop (make bench, 26 October 2026)
+jobs_per_task = 128          # at most the kernel's batch_capacity (256)
+
+[eval]
+probe_count = 3              # frozen generation-zero genomes after scripted-v1
+seeds_per_probe = 8          # each seed is played on both sides: 16 matches against the coach per candidate
+scripted_probe = true
+
+[export]
+every_s = 60
+tree_full_every_s = 3600

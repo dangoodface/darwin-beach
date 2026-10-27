@@ -164,7 +164,7 @@ champions can be replayed and played against.
 ## ladder.json (v1)
 
 ```json
-{"era": 3, "members": [
+{"era": 3, "cycle_window": 5, "members": [
   {"id": "scripted-v1", "kind": "scripted", "rating": 1000, "since_era": 0},
   {"id": "…", "kind": "champion", "rating": 1150, "since_era": 1,
    "promoted_at_gen": 240, "winrate_vs_previous": 0.58}
@@ -172,7 +172,8 @@ champions can be replayed and played against.
  "matrix": {"ids": ["scripted-v1", "…"], "winrate": [[null, 0.42], [0.58, null]]}}
 ```
 
-`matrix.winrate[r][c]` is how often row `r` beat column `c` over the
+`cycle_window` is how many previous champions each new champion is played
+against for the cycle check. `matrix.winrate[r][c]` is how often row `r` beat column `c` over the
 promotion and rating matches, `null` where they never played. The page draws
 it as the who-beats-whom table and flags cycles.
 
