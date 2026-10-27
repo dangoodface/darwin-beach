@@ -1,11 +1,16 @@
-// A tiny static server for working on the page: serves web/ (index.html,
-// dist/, and data/, a symlink to $ARENA_DATA/out) at http://localhost:8787/.
-// Rebuild with `npm run build` or keep `npm run watch` running alongside.
+// A tiny static server for working on the page: serves web/dist/, the same
+// folder the Worker serves in production, at http://localhost:8787/. It links
+// dist/data to $ARENA_DATA/out so the page's data/ fetches work as they do
+// behind the Worker. Run `npm run build` first, or keep `npm run watch` going.
 import { createServer } from "node:http";
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, statSync, existsSync, symlinkSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { extname, join, normalize, resolve } from "node:path";
 
-const ROOT = resolve(new URL("..", import.meta.url).pathname);
+const ROOT = resolve(new URL("../dist", import.meta.url).pathname);
+const DATA = process.env.ARENA_DATA ? join(process.env.ARENA_DATA, "out") : join(homedir(), ".local/share/arena/out");
+mkdirSync(ROOT, { recursive: true });
+if (!existsSync(join(ROOT, "data"))) symlinkSync(DATA, join(ROOT, "data"));
 const PORT = Number(process.env.PORT ?? 8787);
 const TYPES = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".map": "application/json",
