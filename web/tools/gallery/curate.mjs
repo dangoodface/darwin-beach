@@ -213,12 +213,23 @@ for (const style of Object.keys(STYLES)) {
     const tw = [ch(10), c4.genome_id, COACH].map((id) => t[id]?.won ?? 0).reduce((a, b) => a + b, 0);
     const me = [ch(10), c4.genome_id, COACH].map((id) => f[id]?.won ?? 0).reduce((a, b) => a + b, 0);
     twinNote = ` Its twin, trained the same way without the rule, wins ${tw} of 48 and this one ${me}: ${tw === me ? "the rule cost it nothing we can measure" : tw > me ? `the rule costs ${tw - me} wins` : `the rule helped, by ${me - tw} wins`}.`;
+    const tp = result(twin).final.proof ?? {}, td = result(twin).final.descriptors_fresh_mean ?? {};
+    if (style === "kangaroo") twinNote += ` The twin chose to keep jumping anyway, ${Math.round(td.jumps ?? 0)} times a match: both started from the same high-flying brain.`;
+    if (style === "sprinter" && tp.ticks_per_point && p.ticks_per_point)
+      twinNote += ` Its points last ${(p.ticks_per_point / 30).toFixed(1)} seconds against the twin's ${(tp.ticks_per_point / 30).toFixed(1)}.`;
   }
+  // The generality check: fresh serves against every member of run 5's hall of fame, not just the three it trained on.
+  let hof = "";
+  try {
+    const h = JSON.parse(readFileSync(join(SPEC, main, "hof.json"), "utf8"));
+    const worst = Math.min(...Object.values(h.per_member).map((m) => m.won));
+    hof = ` Against all ${h.members} members of run 5's hall of fame, on seeds it never saw, it beats ${h.members_beaten} of ${h.members}${worst < 16 ? `, its closest at ${worst} of 16` : ", 16 of 16 against every one"}.`;
+  } catch {}
   // The showcase match against the best bot of the night, else the first one listed.
   const show = r.final.showcase.find((m) => m.rival_id === ch(10)) ?? r.final.showcase[0];
   const meSide = { label, kind: "bot" }, them = { label: ROUND[show.rival_id] ?? "RIVAL", kind: show.rival_id === COACH ? "coach" : "bot" };
   const a = show.side !== "B", rivalRun = show.rival_id === c4.genome_id ? "r4" : "r5";
-  add({ act: 4, title, left: a ? meSide : them, right: a ? them : meSide, caption: `${blurb} Trained 20 minutes against three rivals. ${rec}${proof}${twinNote}` },
+  add({ act: 4, title, left: a ? meSide : them, right: a ? them : meSide, caption: `${blurb} Trained 20 minutes against three rivals. ${rec}${proof}${hof}${twinNote}` },
     { l: a ? `spec:${main}` : rivalRun, r: a ? rivalRun : `spec:${main}` }, a ? r.final.genome_id : show.rival_id, a ? show.rival_id : r.final.genome_id, BigInt(show.seed), () => ({}));
 }
 
