@@ -103,3 +103,35 @@ def test_export_writes_a_genome_the_kernel_agrees_with(tmp_path):
     bad.write_bytes(out.read_bytes()[:-4])
     with pytest.raises(ValueError, match="515"):
         verify_against_kernel(bad, KERNEL)
+
+
+def test_anneal_scale():
+    pytest.importorskip("torch")
+    from species.ppo.train import anneal_scale
+    assert anneal_scale(0.0, 0.6) == 1.0 and abs(anneal_scale(0.3, 0.6) - 0.5) < 1e-12
+    assert anneal_scale(0.6, 0.6) == 0.0 and anneal_scale(0.95, 0.6) == 0.0 and anneal_scale(0.0, 0.0) == 0.0
+
+
+def test_shaping_and_softening_change_rewards_not_the_game(runner):
+    base = runner.play(GENOMES[0], COACH, 5, 0, 600, 3)
+    zero = runner.play(GENOMES[0], COACH, 5, 0, 600, 3, shape_w=0.0, noise_p=0.0)
+    assert np.array_equal(base.reward, zero.reward) and base.final_hash == zero.final_hash
+    shaped = runner.play(GENOMES[0], COACH, 5, 0, 600, 3, shape_w=1.0)
+    assert shaped.final_hash == base.final_hash and shaped.ticks == base.ticks  # same actions, same game
+    pts = np.flatnonzero(base.reward)
+    assert np.allclose(shaped.reward[pts] - base.reward[pts], shaped.reward[pts] - np.round(shaped.reward[pts]),
+                       atol=1.0)
+    assert np.abs(shaped.reward - base.reward).sum() > 0 and np.abs(shaped.reward).max() < 2.0
+    soft = runner.play(GENOMES[0], COACH, 5, 0, 600, 3, noise_p=1.0)
+    assert soft.final_hash != base.final_hash  # a coach that never presses plays a different game
+
+
+def test_phi_and_contact():
+    from species.ppo.rollout import contact, phi
+    a = np.zeros(12, np.float32); a[4] = -0.5
+    assert phi(a) == 0.5  # ball on their side
+    b = a.copy(); b[4] = 0.2; b[0] = 0.1
+    assert abs(phi(b) + 0.025) < 1e-6
+    p, c = np.zeros(12, np.float32), np.zeros(12, np.float32)
+    p[7], c[7], c[4], c[0] = -0.5, 0.5, 0.1, 0.1
+    assert contact(p, c) == 0.1 and contact(c, p) == 0.0

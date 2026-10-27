@@ -29,6 +29,21 @@ from .policy import (  # noqa: E402
 )
 
 COACH = "coach"
+GAMMA = 0.999  # the discount the shaping potential is written against; train.py's --gamma default
+
+
+def phi(obs: np.ndarray) -> float:
+    """Shaping potential from the learner's own observation (net at x = 0, own x*dir > 0, scaled by 1/10).
+    Ball on the opponent's side: +0.5. Ball on ours: minus a quarter of the horizontal gap to it (10 units, capped)."""
+    if obs[4] <= 0.0:
+        return 0.5
+    return -0.25 * min(1.0, abs(obs[0] - obs[4]))
+
+
+def contact(prev: np.ndarray, cur: np.ndarray) -> float:
+    """0.1 when the ball turns upwards right next to our slime (a hit); ground bounces are far from it."""
+    near = np.hypot(cur[0] - cur[4], cur[1] - cur[5]) * 10.0 < 3.5
+    return 0.1 if (prev[7] < 0.0 < cur[7] and near) else 0.0
 
 
 @dataclass
@@ -60,7 +75,8 @@ class MatchRunner:
         self._hash = ex["state_hash"]
 
     def play(self, params: np.ndarray, opponent, seed: int, side: int = 0, max_ticks: int = 3000,
-             rng_seed: int = 0, greedy: bool = False, exact: bool = False) -> Episode:
+             rng_seed: int = 0, greedy: bool = False, exact: bool = False, shape_w: float = 0.0,
+             noise_p: float = 0.0) -> Episode:
         """`opponent` is COACH or an f32[515] genome (loaded into table slot 0).
         `greedy` plays the mode instead of sampling; `exact` uses the kernel's arithmetic
         (slow; for tests). Both must hold for a replay to match `Kernel.play` tick for tick."""
@@ -82,8 +98,16 @@ class MatchRunner:
         self._reset(self.store, seed - (1 << 64) if seed >= 1 << 63 else seed)
         feed = ObsFeed()
         t = 0
+        prev_obs, prev_phi = None, 0.0
         while st[LIVES_A] > 0 and st[LIVES_B] > 0 and st[TICK] < max_ticks:
             obs = feed.get(st, side)  # stale for one tick after a point, as in the kernel
+            if shape_w and prev_obs is not None:  # potential-based: gamma*phi(s') - phi(s), plus a hit bonus
+                ph = phi(obs)
+                rew_buf[t - 1] += shape_w * (GAMMA * ph - prev_phi + contact(prev_obs, obs))
+                prev_phi = ph
+            elif shape_w:
+                prev_phi = phi(obs)
+            prev_obs = obs
             lg = fwd(obs, net)
             if greedy:
                 bits = mode_bits(lg)
@@ -97,13 +121,15 @@ class MatchRunner:
                 theirs = self._scripted(self.store, opp_side)
             else:
                 theirs = self._policy(self.store, opp_side, 0)
+            if noise_p and rng.random() < noise_p:
+                theirs = 0  # the softened opponent lets go of every key this tick
             a, b = (mine, theirs) if side == 0 else (theirs, mine)
             self._set(self.store, a, b)
             r = self._step(self.store)  # +1 when A wins the point, -1 when B does
             feed.after_step(r)
             r = r if side == 0 else -r
             if r:
-                rew_buf[t] = r
+                rew_buf[t] += r
                 pts_for += r > 0
                 pts_against += r < 0
             t += 1
