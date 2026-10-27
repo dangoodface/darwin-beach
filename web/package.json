@@ -1,0 +1,16 @@
+{
+  "name": "darwin-beach-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --format=esm --target=es2022 --outfile=dist/app.js --minify --sourcemap",
+    "watch": "esbuild src/main.ts --bundle --format=esm --target=es2022 --outfile=dist/app.js --sourcemap --watch",
+    "dev": "node tools/dev.mjs",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "typescript": "5.9.3"
+  }
+}
