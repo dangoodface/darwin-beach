@@ -12,6 +12,7 @@
 
 pub mod descriptors;
 pub mod hash;
+pub mod juggle;
 pub mod physics;
 pub mod policy;
 pub mod rng;
@@ -23,7 +24,7 @@ use descriptors::N_DESC;
 use physics::{FLAG_NAN, Game};
 use policy::{GENOME_LEN, net_action, upcast};
 
-pub const KERNEL_VERSION: u32 = 1;
+pub const KERNEL_VERSION: u32 = 2;
 pub const MAX_TICKS_CAP: u32 = 3000;
 pub const TABLE_CAPACITY: usize = 1024;
 pub const BATCH_CAPACITY: usize = 256;
@@ -43,7 +44,8 @@ pub struct Job {
     pub b: u32,
 }
 
-/// One result block: 152 bytes, laid out as docs/ABI.md says.
+/// One result block, laid out as docs/ABI.md says: 184 bytes since version 2
+/// (ten descriptors a side), 152 in version 1 (eight).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MatchResult {
@@ -57,7 +59,7 @@ pub struct MatchResult {
 }
 
 const _: () = assert!(core::mem::size_of::<Job>() == 16);
-const _: () = assert!(core::mem::size_of::<MatchResult>() == 152);
+const _: () = assert!(core::mem::size_of::<MatchResult>() == 24 + 2 * 8 * N_DESC);
 
 impl MatchResult {
     pub const BAD_JOB: MatchResult = MatchResult {
@@ -219,6 +221,13 @@ pub extern "C" fn table_capacity() -> u32 {
 #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
 pub extern "C" fn batch_capacity() -> u32 {
     BATCH_CAPACITY as u32
+}
+
+/// Descriptors per side in a result block: 10 since version 2. A version 1 module
+/// has no such export and always 8.
+#[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
+pub extern "C" fn desc_count() -> u32 {
+    N_DESC as u32
 }
 
 #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
@@ -471,12 +480,13 @@ mod tests {
         assert_eq!(result(0).flags, FLAG_MAX_TICKS);
     }
 
-    /// Kernel version 1, frozen: physics, policy, hash, RNG and scripted-v1
-    /// together. The wasm build gives the same hashes (checked through
-    /// wasmtime when this was written). A failure here means the kernel
-    /// changed: bump KERNEL_VERSION and record new values, never edit these.
+    /// Physics, policy, hash, RNG and scripted-v1, frozen since version 1:
+    /// version 2 only adds descriptors, so it plays these four matches to the
+    /// same hashes. The wasm build gives them too (checked through wasmtime).
+    /// A failure here means the game changed: bump KERNEL_VERSION and record
+    /// new values, never edit these.
     #[test]
-    fn golden_matches_of_version_1() {
+    fn golden_matches_since_version_1() {
         let golden: Vec<f32> = (0..GENOME_LEN)
             .map(|i| ((i * 37 % 101) as f32) / 50.0 - 1.0)
             .collect();
@@ -492,7 +502,6 @@ mod tests {
         for (seed, a, b, hash, ticks, points) in cases {
             let mut out = MatchResult::BAD_JOB;
             run_match(&table, seed, a, b, MAX_TICKS_CAP, None, &mut out);
-            assert_eq!(KERNEL_VERSION, 1);
             assert_eq!(
                 (
                     out.final_hash,
@@ -504,6 +513,42 @@ mod tests {
                 "seed {seed}"
             );
         }
+    }
+
+    #[test]
+    fn juggle_descriptors_follow_the_eight() {
+        // The anchor against itself rallies for a long time: both sides string touches together.
+        let table = [0.0f32; GENOME_LEN];
+        let mut out = MatchResult::BAD_JOB;
+        let mut streaks = 0.0;
+        for seed in 0..6 {
+            run_match(
+                &table,
+                seed,
+                SCRIPTED_SLOT,
+                SCRIPTED_SLOT,
+                MAX_TICKS_CAP,
+                None,
+                &mut out,
+            );
+            for d in [out.desc_a, out.desc_b] {
+                assert!(
+                    d[8] <= d[7],
+                    "juggled points {} above points {}",
+                    d[8],
+                    d[7]
+                );
+                assert!(
+                    d[9] >= 1.0 && d[9] <= d[2],
+                    "max_streak {} against hits {}",
+                    d[9],
+                    d[2]
+                );
+                streaks += d[9];
+            }
+        }
+        assert!(streaks > 12.0);
+        assert_eq!(desc_count(), 10);
     }
 
     #[test]

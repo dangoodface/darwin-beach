@@ -14,7 +14,13 @@ import numpy as np
 
 N_DESC = 8
 DESCRIPTOR_NAMES = ("court_position", "airtime", "hits", "mean_hit_height", "mean_speed_after_hit",
-                    "jumps", "distance", "points")  # docs/ABI.md order
+                    "jumps", "distance", "points")  # docs/ABI.md order, kernel version 1
+DESCRIPTOR_NAMES_V2 = DESCRIPTOR_NAMES + ("juggled_points", "max_streak")  # kernel version 2 adds two
+
+
+def descriptor_names(kernel_version: int) -> tuple[str, ...]:
+    """The descriptors a kernel version reports per side; the fake (version 0) reports eight."""
+    return DESCRIPTOR_NAMES_V2 if kernel_version >= 2 else DESCRIPTOR_NAMES
 MASK64 = (1 << 64) - 1
 SCRIPTED_SLOT = 0xFFFFFFFF  # ABI: this slot index means the kernel's scripted bot
 SCRIPTED_ID = "scripted-v1"  # its id in our files; there is no genome file for it
@@ -26,7 +32,7 @@ class MatchResult(NamedTuple):
     points_a: int
     points_b: int
     flags: int
-    desc_a: tuple[float, ...]  # 8 values, ABI order
+    desc_a: tuple[float, ...]  # ABI order: 8 values, 10 from kernel version 2
     desc_b: tuple[float, ...]
     tick_hashes: tuple[int, ...] | None  # only when record_hashes
 

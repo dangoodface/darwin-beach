@@ -51,7 +51,8 @@ def make_matches(kernel: Kernel) -> tuple[np.ndarray, list[tuple[int, int, int]]
     return genomes, jobs
 
 
-def run_node(genomes: np.ndarray, jobs: list[tuple[int, int, int]]) -> list[tuple[int, int, int, np.ndarray]]:
+def run_node(genomes: np.ndarray, jobs: list[tuple[int, int, int]], block_bytes: int = 184,
+             ) -> list[tuple[int, int, int, np.ndarray, bytes]]:
     head = np.array([len(genomes), len(jobs), MAX_TICKS], dtype="<u4")
     packed = np.empty(len(jobs), dtype=JOB_DTYPE)
     packed["seed"] = [s for s, _, _ in jobs]
@@ -64,9 +65,10 @@ def run_node(genomes: np.ndarray, jobs: list[tuple[int, int, int]]) -> list[tupl
     for _ in jobs:
         ticks, flags = np.frombuffer(out, dtype="<u4", count=2, offset=at).tolist()
         final = int(np.frombuffer(out, dtype="<u8", count=1, offset=at + 8)[0])
-        hashes = np.frombuffer(out, dtype="<u8", count=ticks, offset=at + 16)
-        matches.append((ticks, flags, final, hashes))
-        at += 16 + 8 * ticks
+        block = bytes(out[at + 16 : at + 16 + block_bytes])
+        hashes = np.frombuffer(out, dtype="<u8", count=ticks, offset=at + 16 + block_bytes)
+        matches.append((ticks, flags, final, hashes, block))
+        at += 16 + block_bytes + 8 * ticks
     assert at == len(out), "node wrote more than the matches"
     return matches
 
@@ -75,16 +77,19 @@ def test_wasmtime_and_node_agree_tick_by_tick():
     kernel = Kernel(KERNEL)
     genomes, jobs = make_matches(kernel)
     kernel.load_genomes(genomes)
-    node = run_node(genomes, jobs)
+    node = run_node(genomes, jobs, kernel._result_dtype.itemsize)
 
     mismatches, ended_on_cap, ended_on_lives = [], 0, 0
-    for j, ((seed, a, b), (n_ticks, n_flags, n_final, n_hashes)) in enumerate(zip(jobs, node)):
+    for j, ((seed, a, b), (n_ticks, n_flags, n_final, n_hashes, n_block)) in enumerate(zip(jobs, node)):
         r = kernel.play(seed, a, b, MAX_TICKS, record_hashes=True)
         assert r.flags & (FLAG_NAN | FLAG_BAD_JOB) == 0, f"match {j}: flags {r.flags}"
         ended_on_cap += bool(r.flags & FLAG_MAX_TICKS)
         ended_on_lives += 5 in (r.points_a, r.points_b)
         ours = np.array(r.tick_hashes, dtype="<u8")
+        block = np.array([r[:7]], dtype=kernel._result_dtype).tobytes()  # every descriptor, bit for bit
         if (r.ticks, r.flags, r.final_hash) == (n_ticks, n_flags, n_final) and np.array_equal(ours, n_hashes):
+            if block != n_block:
+                mismatches.append(f"match {j}: same ticks, different result block (descriptors)")
             continue
         common = min(len(ours), len(n_hashes))
         differ = np.nonzero(ours[:common] != n_hashes[:common])[0]

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .sim import DESCRIPTOR_NAMES, SCRIPTED_ID
+from .sim import SCRIPTED_ID, descriptor_names
 from .store import Store, data_root
 
 MAX_CURVE_POINTS = 2000
@@ -274,7 +274,7 @@ def export_run(
         "run_id": run_id, "kernel_sha": kernel_sha, "kernel_version": run["kernel_version"],
         "generated_at": _iso(now), "generation": last["gen"], "era": last["era"],
         "probes": json.loads(run["probe_ids_json"]),
-        "descriptor_names": list(DESCRIPTOR_NAMES),
+        "descriptor_names": list(descriptor_names(run["kernel_version"])),
         "grid": {"descriptors": grid["descriptors"], "indices": grid["indices"],
                  "bounds": grid["bounds"], "resolution": grid["resolution"], "lit_floor": floor},
         "cells": cells,

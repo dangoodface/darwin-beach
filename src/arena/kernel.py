@@ -19,21 +19,35 @@ import wasmtime
 from .sim import MASK64, N_DESC, MatchResult
 
 JOB_DTYPE = np.dtype([("seed", "<u8"), ("a", "<u4"), ("b", "<u4")])
-RESULT_DTYPE = np.dtype(
-    [
-        ("final_hash", "<u8"),
-        ("ticks", "<u4"),
-        ("points_a", "<u4"),
-        ("points_b", "<u4"),
-        ("flags", "<u4"),
-        ("desc_a", "<f8", (N_DESC,)),
-        ("desc_b", "<f8", (N_DESC,)),
-    ]
-)
-assert JOB_DTYPE.itemsize == 16 and RESULT_DTYPE.itemsize == 152
+
+
+def result_dtype(n_desc: int) -> np.dtype:
+    """A result block: 24 bytes of header, then n_desc f64 descriptors per side
+    (8 in kernel version 1, 10 since version 2: docs/ABI.md)."""
+    return np.dtype(
+        [
+            ("final_hash", "<u8"),
+            ("ticks", "<u4"),
+            ("points_a", "<u4"),
+            ("points_b", "<u4"),
+            ("flags", "<u4"),
+            ("desc_a", "<f8", (n_desc,)),
+            ("desc_b", "<f8", (n_desc,)),
+        ]
+    )
+
+
+RESULT_DTYPE = result_dtype(N_DESC)  # version 1's layout
+assert JOB_DTYPE.itemsize == 16 and RESULT_DTYPE.itemsize == 152 and result_dtype(10).itemsize == 184
 
 FLAG_NAN, FLAG_MAX_TICKS, FLAG_BAD_JOB = 1, 2, 4
-BAD_JOB = MatchResult(0, 0, 0, 0, FLAG_BAD_JOB, (0.0,) * N_DESC, (0.0,) * N_DESC, None)
+
+
+def bad_job(n_desc: int = N_DESC) -> MatchResult:
+    return MatchResult(0, 0, 0, 0, FLAG_BAD_JOB, (0.0,) * n_desc, (0.0,) * n_desc, None)
+
+
+BAD_JOB = bad_job()  # version 1's; a Kernel's own is Kernel.bad_job
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -91,6 +105,12 @@ class Kernel:
         self._results_ptr = u32("results_ptr")
         self._tick_hash_ptr = u32("tick_hash_ptr")
         self._state_ptr = u32("state_ptr")
+        try:  # version 1 modules have no desc_count export and always eight
+            self.desc_count = u32("desc_count")
+        except KeyError:
+            self.desc_count = N_DESC
+        self._result_dtype = result_dtype(self.desc_count)
+        self.bad_job = bad_job(self.desc_count)
         self._loaded = 0
 
     # ---- memory, in bulk -------------------------------------------------
@@ -129,7 +149,7 @@ class Kernel:
         self, seed: int, a: int, b: int, max_ticks: int = 3000, record_hashes: bool = False
     ) -> MatchResult:
         if not (self._slot_ok(a) and self._slot_ok(b)):
-            return BAD_JOB
+            return self.bad_job
         ticks = self._play_match(self._store, _i64(seed), _i32(a), _i32(b), _i32(max_ticks), int(record_hashes))
         result = self._results(1)[0]
         if record_hashes and not result.flags & FLAG_BAD_JOB:
@@ -139,7 +159,7 @@ class Kernel:
 
     def play_batch(self, jobs: list[tuple[int, int, int]], max_ticks: int = 3000) -> list[MatchResult]:
         """Jobs are (seed, a, b); one result per job, in job order."""
-        results: list[MatchResult] = [BAD_JOB] * len(jobs)
+        results: list[MatchResult] = [self.bad_job] * len(jobs)
         if not 1 <= max_ticks <= self.max_ticks_cap:
             return results
         todo = [i for i, (_, a, b) in enumerate(jobs) if self._slot_ok(a) and self._slot_ok(b)]
@@ -160,7 +180,7 @@ class Kernel:
         return results
 
     def _results(self, n: int) -> list[MatchResult]:
-        blocks = self._read(self._results_ptr, RESULT_DTYPE, n)
+        blocks = self._read(self._results_ptr, self._result_dtype, n)
         hashes = blocks["final_hash"].tolist()
         ticks = blocks["ticks"].tolist()
         points_a = blocks["points_a"].tolist()

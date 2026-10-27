@@ -9,7 +9,7 @@ import hashlib
 import numpy as np
 import pytest
 
-from arena.kernel import BAD_JOB, FLAG_BAD_JOB, FLAG_MAX_TICKS, Kernel, find_kernel
+from arena.kernel import FLAG_BAD_JOB, FLAG_MAX_TICKS, Kernel, find_kernel
 from arena.sim import SCRIPTED_SLOT, MatchResult
 
 KERNEL = find_kernel()
@@ -28,7 +28,7 @@ def kernel() -> Kernel:
 
 def test_protocol_attributes(kernel):
     assert kernel.genome_len == 515
-    assert kernel.kernel_version == 1
+    assert kernel.kernel_version == 2 and kernel.desc_count == 10
     assert kernel.scripted_slot == SCRIPTED_SLOT == 0xFFFFFFFF
     assert kernel.kernel_sha == hashlib.sha256(KERNEL.read_bytes()).hexdigest()
 
@@ -42,7 +42,7 @@ def test_a_match_is_a_pure_function_of_its_inputs(kernel):
     assert other.play(123, 3, 4) == first
     assert kernel.play(124, 3, 4) != first
     assert isinstance(first, MatchResult) and first.tick_hashes is None
-    assert len(first.desc_a) == len(first.desc_b) == 8
+    assert len(first.desc_a) == len(first.desc_b) == kernel.desc_count
     assert first.desc_a[7] == first.points_a and first.desc_b[7] == first.points_b
 
 
@@ -70,7 +70,7 @@ def test_batch_equals_single_plays_across_chunks_and_bad_jobs(kernel):
     assert len(batch) == len(jobs)
     assert batch == [kernel.play(*job) for job in jobs]
     assert [i for i, r in enumerate(batch) if r.flags & FLAG_BAD_JOB] == [10, 20, 40]
-    assert batch[10] == BAD_JOB
+    assert batch[10] == kernel.bad_job
 
 
 def test_max_ticks_rules(kernel):
@@ -78,7 +78,7 @@ def test_max_ticks_rules(kernel):
     assert short.ticks == 10 and short.flags == FLAG_MAX_TICKS
     for bad in (0, 3001):
         assert kernel.play(9, 1, 2, max_ticks=bad).flags == FLAG_BAD_JOB
-        assert kernel.play_batch([(9, 1, 2), (9, 2, 1)], max_ticks=bad) == [BAD_JOB, BAD_JOB]
+        assert kernel.play_batch([(9, 1, 2), (9, 2, 1)], max_ticks=bad) == [kernel.bad_job, kernel.bad_job]
 
 
 def test_load_genomes_checks_shape_and_capacity(kernel):
