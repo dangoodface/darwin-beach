@@ -14,10 +14,22 @@ from .archive import Archive
 from .genome import Genome, SIGMA, iso_line, make_genome, mutate, random_params
 
 
+class Replay(NamedTuple):
+    """One match worth re-running in the browser: the candidate's first evaluation match."""
+
+    seed: int
+    opponent_id: str
+    side: str  # "A" (left) or "B"
+    final_hash: int
+    ticks: int
+    points: tuple[int, int]  # (candidate, opponent)
+
+
 class EvalResult(NamedTuple):
     genome: Genome
     bd: tuple[float, ...]
     fitness: float
+    replay: Replay | None = None
 
 
 class Optimizer(Protocol):
