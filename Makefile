@@ -1,10 +1,11 @@
 # Five commands for the arena. `make help` lists them.
-.PHONY: help test train upload dev parity bench
+.PHONY: help test train upload dev verify parity bench
 
 help:
 	@echo "make test      Python tests"
 	@echo "make train     practice run on the pretend game (200 generations)"
 	@echo "make upload    dry-run mirror of out/ into ~/.local/share/arena/mirror"
+	@echo "make verify    re-run every live cell's replay and compare hashes: make verify RUN=<run_id>"
 	@echo "make dev       the page (placeholder until web/ exists)"
 	@echo "make parity    twin test, Python against Node (TODO: Track K's command)"
 	@echo "make bench     speed test on 15 workers (TODO: Track K's command)"
@@ -18,6 +19,10 @@ train:
 
 upload:
 	uv run python tools/upload.py --to $${ARENA_DATA:-$$HOME/.local/share/arena}/mirror
+
+verify:
+	@test -n "$(RUN)" || { echo "usage: make verify RUN=<run_id>"; exit 2; }
+	uv run python tools/replay.py $(RUN) --all
 
 dev:
 	@echo "TODO: the page track adds 'npm run dev' in web/ (serves web/ plus a data/ link to out/)"

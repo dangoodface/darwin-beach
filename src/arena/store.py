@@ -126,7 +126,10 @@ class Store:
 
     def run_row(self, run_id: str) -> dict:
         cur = self.db.execute("SELECT * FROM runs WHERE run_id=?", (run_id,))
-        return dict(zip([c[0] for c in cur.description], cur.fetchone()))
+        row = cur.fetchone()
+        if row is None:
+            raise KeyError(run_id)
+        return dict(zip([c[0] for c in cur.description], row))
 
     def generations(self, run_id: str) -> list[dict]:
         cur = self.db.execute("SELECT * FROM generations WHERE run_id=? ORDER BY gen", (run_id,))

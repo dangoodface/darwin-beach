@@ -100,6 +100,13 @@ def ancestors(champion: str | None, by_id: dict[str, dict]) -> list[str]:
     return sorted(seen, key=lambda g: (by_id[g]["gen"], g))
 
 
+def champion_of(entrants: list[dict], live: set[str]) -> str | None:
+    """The fittest live elite; ties go to the elder (insertion order)."""
+    order = {e["genome_id"]: i for i, e in enumerate(entrants)}
+    fit = {e["genome_id"]: e["fitness"] for e in entrants}
+    return max(live, key=lambda g: (fit[g], -order[g]), default=None)
+
+
 def export_run(
     store: Store,
     run_id: str,
@@ -122,9 +129,7 @@ def export_run(
     live = set(occupants.values())
     last = gens[-1]
 
-    # the champion is the fittest live elite; ties go to the elder (insertion order)
-    order = {e["genome_id"]: i for i, e in enumerate(entrants)}
-    champion = max(live, key=lambda g: (by_id[g]["fitness"], -order[g]), default=None)
+    champion = champion_of(entrants, live)
 
     # genomes the page can fetch: live elites, replay opponents (probes), the champion's ancestry
     lineage = ancestors(champion, by_id)
