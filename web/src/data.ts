@@ -22,6 +22,7 @@ export type Cell = {
   gen: number;
   era: number;
   margins?: number[];
+  fresh?: { won: number; margin: number };
   replay: Replay;
 };
 
@@ -49,6 +50,7 @@ export type Latest = {
     matches_total: number;
     matches_per_s: number;
     elapsed_s: number;
+    fresh?: { seeds: number; matches: number; checked: number; beats_coach: number };
   };
 };
 

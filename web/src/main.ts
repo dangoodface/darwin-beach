@@ -6,7 +6,7 @@ import { Kernel, SCRIPTED_SLOT, FORWARD, BACKWARD, JUMP } from "./kernel.ts";
 import { drawCourt, type CourtColours } from "./court.ts";
 import { Grid } from "./grid.ts";
 import { drawCurve, drawTree } from "./charts.ts";
-import { styleSentence, strengthWords, margin, coachLine } from "./describe.ts";
+import { styleSentence, strengthWords, margin, coachLine, freshLine } from "./describe.ts";
 
 const DATA = "data/";
 const TICK_MS = 1000 / 30;
@@ -121,6 +121,9 @@ function renderCell(cell: Cell) {
   const coach = coachLine(cell, latest.probes, SCRIPTED);
   $("cell-coach").hidden = coach === null;
   $("cell-coach").textContent = coach ?? "";
+  const fresh = freshLine(cell, latest.stats.fresh?.matches);
+  $("cell-fresh").hidden = fresh === null;
+  $("cell-fresh").textContent = fresh ?? "";
   $("cell-born").textContent = `Born in generation ${cell.gen.toLocaleString("en")}.${isLit(cell, floor) ? "" : " This style has not lit up yet."}`;
   const r = cell.replay;
   const rival = r.opponent_id === SCRIPTED ? "the coach (the hand-written bot every style is measured against)" : "a sparring partner";
