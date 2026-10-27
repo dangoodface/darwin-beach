@@ -111,6 +111,9 @@ entrants are spread in `y` ordered by their parents' mean `y`, so families
 stay together. The page draws and never lays out. The exporter caps the
 file: the full champion lineage, every live elite, and the last 2,000
 entrants; `tree-full.json` holds everything for a "load all" button.
+`tree-full.json` is written at the end of a run and at most once an hour
+(`export.tree_full_every_s`, default 3600), so for the first hour of a run
+it does not exist: the "load all" button handles a 404 by saying so.
 
 ## ladder.json (v1)
 
