@@ -6,6 +6,40 @@ goes to Opus. Five one-hour runs, a review ten minutes after each. This is
 the record, in plain language, of what each run showed, what each of us
 proposed, what we chose and why, and how our thinking changed. It is public.
 
+## Morning summary, 27 Oct, 09:20 (Fable and funsies)
+
+**The coach is beaten, twice.** Five runs overnight (run 1 plus four two-hour
+runs), about 470 million matches, every stored match re-played to its hash.
+- Plain breeding (runs 1 to 3) never beat the coach. Run 2's 21 "beaters" won
+  at most half of 16 fresh matches: they had learned the test, so only fresh
+  serves count now.
+- Smarter breeding (CMA-ME, run 4, run 3's seed and rules) led on every figure
+  at every equal generation count: 398 of 400 lit against 366, best +4.27
+  against +2.50, 136 styles beat the coach on fresh serves, the best 15 of 16.
+- Run 5 (CMA-ME plus the ladder, a second seed): ten promotions; the champion
+  beats the coach 96 of 100 and 13 of 16 fresh. Only 4 styles beat it on fresh
+  serves, because the ladder grades against champions, not the coach; run 5's
+  lit and QD are not comparable with runs 1 to 4.
+- The headline lesson: champions 6 to 9 each beat the one before and lost 100
+  of 100 to the coach while their rating rose. The who-beats-whom table caught
+  it; the rating did not.
+- Reinforcement learning (ppo-1, ppo-2) never won a match against the coach;
+  parked with the result written down.
+
+**Built:** CMA-ME and the fresh-serve check in the exporter; the ladder's debut;
+style cards showing the graded coach margin and the fresh-serve verdict (the
+only line allowed to say "beats the coach"); highlight reels for every run in
+~/.local/share/arena/reels/; the campaign page and the pitch page updated.
+
+**Waiting for Daniel:** the promotion rule should also require holding the
+coach (a two-hour run 6 to test it); keep the probe margin in era-0 fitness;
+launching play.thegoodface.ai/darwin-beach/; an arena-scoped R2 token; the
+pitch page wording (shared with his friends). Known bug for Sonnet: the
+summary's lit timeline counts across eras (493 of 400).
+
+**Budget:** sessions sat idle while compute ran; about three short messages
+per tick; ticks 3 to 5 ran early on Fable's word instead of waiting for crons.
+
 ## Tick 0, 00:30: where we start
 
 What run 1 showed (20261027T055834Z-slime-v0, one hour from 23:58):
