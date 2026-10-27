@@ -35,7 +35,7 @@ def test_run_fills_and_notifies():
     ctx = run(_cfg(), [rec], generations=30)
     assert rec.started == 1 and rec.ended == 1 and len(rec.gens) == 30
     assert ctx.archive.filled() > 10
-    assert rec.gens[-1].matches_total == 30 * 16 * 2 * 2 * 2  # gens * cands * probes * seeds * sides
+    assert rec.gens[-1].matches_total == 30 * 16 * 3 * 2 * 2  # gens * cands * (scripted + 2 probes) * seeds * sides
     assert all(len(g.results) == len(g.outcomes) == len(g.evicted) for g in rec.gens)
     assert all(e is None for g in rec.gens for o, e in zip(g.outcomes, g.evicted) if o != "replaced")
 

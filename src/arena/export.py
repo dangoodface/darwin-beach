@@ -15,6 +15,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .sim import SCRIPTED_ID
 from .store import Store, data_root
 
 MAX_CURVE_POINTS = 2000
@@ -126,7 +127,7 @@ def export_run(
 
     # genomes the page can fetch: live elites, replay opponents (probes), the champion's ancestry
     lineage = ancestors(champion, by_id)
-    want = set(live) | set(lineage) | set(json.loads(run["probe_ids_json"]))
+    want = set(live) | set(lineage) | {p for p in json.loads(run["probe_ids_json"]) if p != SCRIPTED_ID}  # the scripted bot has no genome
     glen = run["genome_len"]
     for gid in sorted(want):
         data = store.params(gid)

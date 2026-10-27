@@ -34,7 +34,8 @@ class RunContext:
     kernel_sha: str
     kernel_version: int
     genome_len: int
-    probes: list[Genome]
+    probes: list[Genome]  # frozen generation-zero genomes; the scripted bot has no genome
+    probe_ids: list[str]  # the whole probe set in order, "scripted-v1" first when present
     archive: Archive
     started_at: datetime
     started_mono: float = field(default_factory=time.monotonic)
@@ -71,7 +72,10 @@ def run(
     probe_ss, optim_ss, seed_ss = root.spawn(3)
 
     with Workers(cfg.sim_kind, cfg.kernel_path, cfg.workers, cfg.jobs_per_task) as workers:
-        kernel_sha, kernel_version, genome_len = workers.simulator_info
+        kernel_sha, kernel_version, genome_len, scripted_slot = workers.simulator_info
+        if cfg.scripted_probe and scripted_slot is None:
+            raise ValueError("eval.scripted_probe is set but the simulator has no scripted bot")
+        scripted_slot = scripted_slot if cfg.scripted_probe else None
 
         probe_rng = np.random.default_rng(probe_ss)
         probes = [
@@ -82,16 +86,16 @@ def run(
             int(s) for s in seed_ss.generate_state(cfg.seeds_per_probe, dtype=np.uint64)
         )
         resolved = Config.from_dict({**cfg.to_dict(), "seed": cfg.seed, "eval": {
-            "probe_count": cfg.probe_count, "seeds_per_probe": len(seeds), "eval_seeds": list(seeds)}})
+            "scripted_probe": cfg.scripted_probe, "probe_count": cfg.probe_count, "seeds_per_probe": len(seeds), "eval_seeds": list(seeds)}})
 
         archive = Archive(cfg.bounds, cfg.resolution, cfg.qd_offset)
         opt = MapElites(archive, np.random.default_rng(optim_ss), kernel_sha, genome_len,
                         cfg.batch_size, cfg.init_size, cfg.sigma, cfg.crossover_frac)
-        evaluator = Evaluator(workers, probes, seeds, cfg.indices, cfg.max_ticks)
+        evaluator = Evaluator(workers, probes, scripted_slot, seeds, cfg.indices, cfg.max_ticks)
 
         started = now or datetime.now(timezone.utc)
         ctx = RunContext(make_run_id(cfg.slug, started), resolved, kernel_sha, kernel_version,
-                         genome_len, probes, archive, started)
+                         genome_len, probes, [o for o, _ in evaluator.opponents], archive, started)
         for o in observers:
             o.on_start(ctx)
 

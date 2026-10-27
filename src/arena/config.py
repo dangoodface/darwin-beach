@@ -28,6 +28,7 @@ class Config:
     crossover_frac: float = 0.5
     workers: int = 15
     jobs_per_task: int = 128
+    scripted_probe: bool = True  # the kernel's scripted bot is probe 0
     probe_count: int = 3
     seeds_per_probe: int = 4
     eval_seeds: tuple[int, ...] = field(default_factory=tuple)  # empty: drawn from the run seed
@@ -55,6 +56,7 @@ class Config:
             crossover_frac=float(opt.get("crossover_frac", base.crossover_frac)),
             workers=int(wk.get("count", base.workers)),
             jobs_per_task=int(wk.get("jobs_per_task", base.jobs_per_task)),
+            scripted_probe=bool(ev.get("scripted_probe", base.scripted_probe)),
             probe_count=int(ev.get("probe_count", base.probe_count)),
             seeds_per_probe=int(ev.get("seeds_per_probe", base.seeds_per_probe)),
             eval_seeds=tuple(int(s) for s in ev.get("eval_seeds", ())),
@@ -73,8 +75,8 @@ class Config:
             raise ValueError("sim.kernel_path is required when sim.kind = 'kernel'")
         if not 1 <= self.jobs_per_task <= 256:
             raise ValueError("workers.jobs_per_task must be 1..256 (the kernel's batch_capacity)")
-        if self.probe_count < 1 or self.seeds_per_probe < 1 or self.batch_size < 1:
-            raise ValueError("probe_count, seeds_per_probe and batch_size must be at least 1")
+        if self.probe_count + int(self.scripted_probe) < 1 or self.seeds_per_probe < 1 or self.batch_size < 1:
+            raise ValueError("the probe set must be non-empty, and seeds_per_probe and batch_size at least 1")
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe form for the store; u64 seeds travel as decimal strings."""
@@ -87,7 +89,7 @@ class Config:
             "optim": {"batch_size": self.batch_size, "init_size": self.init_size,
                       "sigma": self.sigma, "crossover_frac": self.crossover_frac},
             "workers": {"count": self.workers, "jobs_per_task": self.jobs_per_task},
-            "eval": {"probe_count": self.probe_count, "seeds_per_probe": self.seeds_per_probe,
+            "eval": {"scripted_probe": self.scripted_probe, "probe_count": self.probe_count, "seeds_per_probe": self.seeds_per_probe,
                      "eval_seeds": [str(s) for s in self.eval_seeds]},
             "export": {"every_s": self.export_every_s},
         }

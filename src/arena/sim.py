@@ -14,6 +14,8 @@ import numpy as np
 
 N_DESC = 8
 MASK64 = (1 << 64) - 1
+SCRIPTED_SLOT = 0xFFFFFFFF  # ABI: this slot index means the kernel's scripted bot
+SCRIPTED_ID = "scripted-v1"  # its id in our files; there is no genome file for it
 
 
 class MatchResult(NamedTuple):
@@ -31,6 +33,7 @@ class Simulator(Protocol):
     genome_len: int
     kernel_sha: str  # hex sha256 of the wasm bytes; FakeSimulator uses "fake-" plus a fixed string
     kernel_version: int
+    scripted_slot: int | None  # slot index that plays the scripted bot, or None if the simulator has none
 
     def load_genomes(self, table: np.ndarray) -> None:
         """Shape (n, genome_len), float32, slot i = row i."""
@@ -68,6 +71,7 @@ class FakeSimulator:
 
     genome_len = 515
     kernel_version = 0
+    scripted_slot = SCRIPTED_SLOT
     kernel_sha = "fake-" + hashlib.sha256(b"arena fake simulator v0").hexdigest()[:16]
 
     def __init__(self) -> None:
@@ -77,6 +81,8 @@ class FakeSimulator:
         self._digest: list[int] = []
         self._desc = np.zeros((0, N_DESC))
         self._strength = np.zeros(0)
+        # a pretend scripted bot: a fixed digest, middling strength, a net-hugging, grounded style
+        self._scripted = (_u64(b"fake scripted-v1"), -0.8, np.array([0.8, 0.2, 30.0, 8.0, 12.0, 6.0, 150.0, 0.0]))
 
     def load_genomes(self, table: np.ndarray) -> None:
         table = np.ascontiguousarray(table, dtype=np.float32)
@@ -98,20 +104,28 @@ class FakeSimulator:
         self._strength = -np.mean((g - self._target) ** 2, axis=1)
         self._digest = [_u64(row.tobytes()) for row in table]
 
+    def _slot(self, i: int):
+        if i == SCRIPTED_SLOT:
+            return self._scripted
+        if 0 <= i < len(self._digest):
+            return self._digest[i], self._strength[i], self._desc[i]
+        return None
+
     def play(
         self, seed: int, a: int, b: int, max_ticks: int = 3000, record_hashes: bool = False
     ) -> MatchResult:
-        if not (0 <= a < len(self._digest) and 0 <= b < len(self._digest)):
+        ra, rb = self._slot(a), self._slot(b)
+        if ra is None or rb is None:
             return MatchResult(0, 0, 0, 0, 4, (0.0,) * N_DESC, (0.0,) * N_DESC, None)
-        h = _splitmix(seed & MASK64 ^ _splitmix(self._digest[a]) ^ (_splitmix(self._digest[b]) << 1 & MASK64))
+        (dig_a, str_a, desc_a), (dig_b, str_b, desc_b) = ra, rb
+        h = _splitmix(seed & MASK64 ^ _splitmix(dig_a) ^ (_splitmix(dig_b) << 1 & MASK64))
         ticks = 300 + h % max(1, min(max_ticks, 3000) - 299)
-        edge = (self._strength[a] - self._strength[b]) * 4.0  # roughly +-1 for typical genomes
+        edge = (str_a - str_b) * 4.0  # roughly +-1 for typical genomes
         noise = ((h >> 20) & 0xFFFF) / 65535.0 - 0.5  # [-0.5, 0.5]
         a_wins = (edge + noise * 1.5) >= 0.0
         lost = int(np.clip(round(4.0 / (1.0 + np.exp(abs(edge) * 3.0)) * 2.0 + (h >> 40) % 2), 0, 4))
         points_a, points_b = (5, lost) if a_wins else (lost, 5)
-        desc_a = self._desc[a].copy()
-        desc_b = self._desc[b].copy()
+        desc_a, desc_b = desc_a.copy(), desc_b.copy()
         desc_a[7], desc_b[7] = points_a, points_b
         hashes = None
         if record_hashes:

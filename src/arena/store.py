@@ -84,7 +84,7 @@ class Store:
                 "INSERT INTO runs VALUES (?,?,?,?,?,?,?,?,?,?)",
                 (ctx.run_id, cfg.slug, ctx.started_at.strftime("%Y-%m-%dT%H:%M:%SZ"), ERA,
                  ctx.kernel_sha, ctx.kernel_version, ctx.genome_len, json.dumps(cfg.to_dict()),
-                 json.dumps([p.id for p in ctx.probes]), json.dumps([str(s) for s in cfg.eval_seeds])))
+                 json.dumps(ctx.probe_ids), json.dumps([str(s) for s in cfg.eval_seeds])))
             for p in ctx.probes:
                 self._genome(ctx, p, "probe")
 
@@ -95,7 +95,7 @@ class Store:
 
     def record_generation(self, ctx: RunContext, info: GenerationInfo) -> None:
         arch = ctx.archive
-        n_matches = len(ctx.cfg.eval_seeds) * len(ctx.probes) * 2
+        n_matches = len(ctx.cfg.eval_seeds) * len(ctx.probe_ids) * 2
         with self.db:
             for r, outcome, evicted in zip(info.results, info.outcomes, info.evicted):
                 if outcome == "rejected":

@@ -25,9 +25,11 @@ count = 15
 jobs_per_task = 128      # at most the kernel's batch_capacity (256)
 
 [eval]
-probe_count = 3          # frozen generation-zero genomes, drawn from the run seed
+scripted_probe = true    # the kernel's scripted bot ("scripted-v1") is probe 0
+probe_count = 3          # then this many frozen generation-zero genomes, drawn from the run seed
 seeds_per_probe = 4      # each seed is played on both sides
 # eval_seeds = [ ... ]   # optional; otherwise drawn from the run seed and recorded in the store
 
 [export]
 every_s = 60
+tree_full_every_s = 3600   # tree-full.json grows without bound: written at the end and at most this often
