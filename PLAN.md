@@ -131,8 +131,13 @@ W5. Play mode (v1, cheap enough to start): arrow keys for one side,
   generation.
 - Integration: the one-hour run under systemd-run, the reproducibility run,
   the benchmark on 15 workers, the acceptance list.
-- Daniel's gates through funsies: name, domain, GitHub repo, R2 bucket,
-  Pages deploy, any LLM budget (none in step 0).
+- Daniel's gates through funsies, state on 26 October 2026: name decided
+  (Darwin Beach), public repo approved (dangoodface/darwin-beach, push after
+  the history check), R2 bucket approved (arena-data, private, free tier
+  only, created when integration needs it), address decided
+  (play.thegoodface.ai/darwin-beach/, a Worker with static assets; funsies
+  wires the service binding; tell funsies before it goes live), no LLM
+  budget in step 0.
 
 ## v0 acceptance
 
@@ -156,3 +161,5 @@ W5. Play mode (v1, cheap enough to start): arrow keys for one side,
 | Date | What |
 |---|---|
 | 26 October 2026 | Repo scaffolded, contracts written, tracks assigned, first tasks handed out |
+| 26 October 2026 | Track T complete on the fake simulator and merged (1a42d84, 40 tests). Contract rulings: scripted bot as reserved slot, serve vy, hash and NaN order, 64-bit boundary, descriptor details (docs/ABI.md); exporter precision (docs/DATA.md) |
+| 26 October 2026 | Daniel: name Darwin Beach ("Where volleyball evolves"); public repo dangoodface/darwin-beach approved (Apache-2.0, no secrets, plain README); private R2 bucket arena-data approved within the free tier; address play.thegoodface.ai/darwin-beach/ as its own Worker behind a service binding |

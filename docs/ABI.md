@@ -1,5 +1,8 @@
 # Kernel ABI, version 1
 
+Rulings of 26 October 2026 (Opus's eight gaps and Sonnet's probe question)
+are folded in below; the scripted bot is a reserved slot.
+
 One WebAssembly module, `slime_kernel.wasm`, built from `kernel/` (Rust,
 target `wasm32-unknown-unknown`, plain `extern "C"` exports, no wasm-bindgen).
 It exports functions and one linear memory. Python (wasmtime) and the browser
@@ -26,6 +29,10 @@ with the reason.
 - The only randomness is the kernel's PCG32, seeded from the u64 the caller
   passes. Nothing random is generated outside.
 - Fixed update order (below). Ties on equality follow the Python source.
+- Lives saturate at zero, so stepping a finished interactive game cannot
+  underflow. The interactive game is its own instance: `play_match` never
+  disturbs a replay in progress. The state block is a copy refreshed after
+  `reset` and `step`; writing to it changes nothing.
 
 ## Sides, actions, observations
 
@@ -54,6 +61,8 @@ Constants
 - `genome_len() -> u32`: 515.
 - `max_ticks_cap() -> u32`: 3000. `max_ticks` arguments above it are an error.
 - `table_capacity() -> u32`: 1024 genomes. `batch_capacity() -> u32`: 256 jobs.
+- `scripted_slot() -> u32`: `0xFFFFFFFF`. Wherever a slot is expected
+  (`play_match`, a job, `policy_action`) this value means the scripted bot.
 
 Memory (byte offsets into the exported `memory`; all static, no allocator)
 - `genome_table_ptr() -> u32`: `f32[table_capacity][genome_len]`. Slot i is
@@ -63,17 +72,21 @@ Memory (byte offsets into the exported `memory`; all static, no allocator)
 - `results_ptr() -> u32`: `batch_capacity` result blocks of 152 bytes (layout
   below). `play_match` writes block 0; `play_batch` writes block i for job i.
 - `tick_hash_ptr() -> u32`: `u64[max_ticks_cap]`, filled by `play_match`
-  when `record_hashes` is nonzero (per-tick running hash, for parity tests).
+  when `record_hashes` is nonzero. `tick_hash[i]` is the running hash after
+  tick `i + 1` (the state block's `tick` is the 1-based count after a step).
 - `state_ptr() -> u32`: the f64 state block of the interactive game (below).
 
 Matches
 - `play_match(seed: u64, a: u32, b: u32, max_ticks: u32, record_hashes: u32)
   -> u32`: resets with `seed`, plays table slot `a` on the left and `b` on
   the right until a side has no lives or `max_ticks` ticks; returns ticks
-  played; fills result block 0.
+  played; fills result block 0. A bad job (`max_ticks` of 0 or above the cap,
+  or a slot that is neither in the table nor `scripted_slot()`) writes block
+  0 with flag bit 2 set and returns 0.
 - `play_batch(n: u32, max_ticks: u32) -> u32`: runs the first `n` jobs from
   the jobs buffer in order, each as `play_match` without hashes per tick;
-  returns the number completed (less than `n` only on a bad job).
+  stops at the first bad job, flags that job's block, and returns how many
+  completed before it. `n` above `batch_capacity` runs nothing and returns 0.
 
 Interactive (for the browser, and for tests)
 - `reset(seed: u64)`, `set_actions(a: u32, b: u32)`, `step() -> i32`:
@@ -81,11 +94,15 @@ Interactive (for the browser, and for tests)
 - `is_done(max_ticks: u32) -> u32`: 1 when a side has no lives or the tick
   count reached `max_ticks`.
 - `policy_action(side: u32, slot: u32) -> u32`: the action genome `slot`
-  would take now for `side` (0 = A, 1 = B), from the current state.
-- `scripted_action(side: u32) -> u32`: the anchor bot: move towards the
-  ball's x, jump when the ball is close and above; deterministic, no params.
-  It is a ladder anchor and a probe opponent, so it never changes once
-  released (a change is a kernel version bump).
+  would take now for `side` (0 = A, 1 = B), from the current state;
+  `scripted_slot()` is accepted. A bad side or slot returns `0xFFFFFFFF`
+  (which arrives as -1 in JS).
+- `scripted_action(side: u32) -> u32`: the anchor bot, deterministic, no
+  parameters: it tracks the ball's x when the ball is on its side and waits
+  at a home x when the ball is on the far side, and jumps when the ball is
+  close and above. The exact definition lives in `kernel/src/scripted.rs`
+  and is frozen at kernel version 1: it is a ladder anchor and a probe
+  opponent, so any change is a kernel version bump.
 - `state_hash() -> u64`: the running hash of the interactive game.
 
 ## Result block (152 bytes)
@@ -96,7 +113,7 @@ Interactive (for the browser, and for tests)
 | 8 | u32 | ticks |
 | 12 | u32 | points_a |
 | 16 | u32 | points_b |
-| 20 | u32 | flags: bit 0 NaN or infinity seen, bit 1 ended on max_ticks, bit 2 bad job |
+| 20 | u32 | flags: bit 0 NaN or infinity seen, bit 1 ended on `max_ticks` with both sides still holding lives, bit 2 bad job |
 | 24 | f64[8] | descriptors A |
 | 88 | f64[8] | descriptors B |
 
@@ -107,10 +124,10 @@ Interactive (for the browser, and for tests)
 | 0 | court_position | mean over ticks of `(22.5 - x*dir) / 20.5`; 0 at the back wall, 1 at the net |
 | 1 | airtime | fraction of ticks with `y > 1.5` |
 | 2 | hits | count of ball bounces off this slime |
-| 3 | mean_hit_height | mean ball y at those bounces, 0 if none |
-| 4 | mean_speed_after_hit | mean ball speed right after those bounces, 0 if none |
-| 5 | jumps | ground to air transitions |
-| 6 | distance | sum of `|dx|` per tick |
+| 3 | mean_hit_height | mean ball y right after those bounces (after the nudge loop), 0 if none |
+| 4 | mean_speed_after_hit | mean `sqrt(vx*vx + vy*vy)` of the ball after the velocity update of those bounces, 0 if none |
+| 5 | jumps | count of ticks where the slime's y went from `<= 1.5` to `> 1.5` |
+| 6 | distance | sum over ticks of `|x after update - x before|` |
 | 7 | points | points won |
 
 The x range comes from the slime's own-half clamp: `x*dir` runs from
@@ -128,7 +145,19 @@ FNV-1a 64 (offset `0xcbf29ce484222325`, prime `0x100000001b3`), chained
 across ticks. After each `step`, in this order: `tick` as u32 little-endian,
 the twelve f64 of ball, A and B as in the state block (little-endian bit
 patterns), then A lives and B lives as u32. `final_hash` is the value at the
-end; `tick_hash[tick]` is the running value after that tick when recording.
+end; `tick_hash[i]` is the running value after tick `i + 1` when recording.
+
+The NaN check runs before the descriptor accumulators and before the hash.
+A tick that produced a NaN or an infinity is neither hashed nor counted in
+`ticks`, its hits are discarded, flag bit 0 is set and the match stops.
+
+## 64-bit values at the boundary
+
+Hashes and seeds are u64 inside the kernel, but both wasmtime-py and JS
+present i64 results as signed values. The Python `Kernel` masks results
+with `& (2**64 - 1)` and passes a seed at or above 2^63 as its signed
+equivalent; the page wraps results with `BigInt.asUintN(64, x)` and passes
+seeds as BigInt, which wasm wraps by itself.
 
 ## RNG
 
@@ -138,8 +167,10 @@ as u32`, `rot = (old >> 59) as u32`, result `(xorshifted >> rot) |
 (xorshifted << ((32 - rot) & 31))`. Seeding, as the reference `pcg32_srandom_r`
 with `initseq = 0xda3e39cb94b95bdb`: `state = 0; inc = (initseq << 1) | 1;
 next(); state += seed; next()`. `u01() = (next_u32() >> 8) as f64 *
-(1.0 / 16777216.0)`. The only use: the serve, `ball vx = -20 + 40 * u01()`,
-once at `reset` and once after every point, in that order.
+(1.0 / 16777216.0)`. The only use is the serve, two draws in this order:
+`ball vx = -20 + 40 * u01()`, then `ball vy = 10 + 15 * u01()` (the source
+draws `uniform(-20, 20)` then `uniform(10, 25)`), once at `reset` and once
+after every point.
 
 ## Physics, in the order of one tick
 
@@ -162,11 +193,13 @@ Python file uses (`-9.8*2*1.5`, `10*1.75`) so the double is the same.
 4. `checkEdges` on the ball: walls, ceiling, fence sides, floor. The floor
    decides the point: ball `x <= 0` is a point for B, otherwise for A.
 5. On a point: new serve (RNG), lives, delay reset; `step` returns the sign.
-6. `updateState` for A, then B (the observations for the next tick).
-7. Descriptor accumulators, NaN check, hash.
+6. Only when no point was scored: `updateState` for A, then B (the source
+   returns early on a point, so both observations stay one tick stale after
+   every point; the kernel follows it).
+7. Always: NaN check, then descriptor accumulators, then hash.
 
-Start: ball at (0, 12) with the random vx, A at (-12, 1.5), B at (12, 1.5),
-delay 30 frames, 5 lives each.
+Start: ball at (0, 12) with the random vx and vy, A at (-12, 1.5), B at
+(12, 1.5), delay 30 frames, 5 lives each.
 
 ## Versioning
 

@@ -20,6 +20,15 @@ $ARENA_DATA/out/index.json   lists runs: [{run_id, title, started_at, latest_gen
 
 `ARENA_DATA` defaults to `~/.local/share/arena`. Never under `/tmp`.
 
+## Where it is served (decided 26 October 2026)
+
+The page lives at `play.thegoodface.ai/darwin-beach/`: Darwin Beach is its
+own Worker with static assets, reached from the `play-thegoodface` Worker
+through a service binding at that path. The data files come through the
+same Worker, from the R2 bucket, under `darwin-beach/data/`. So the page
+uses relative URLs only, never a leading slash, and works the same from a
+local dev server at `/`. No subdomain and no r2.dev address.
+
 ## Ids
 
 - `genome_id`: hex sha256 of the f32 little-endian parameter bytes followed
@@ -54,12 +63,18 @@ $ARENA_DATA/out/index.json   lists runs: [{run_id, title, started_at, latest_gen
 ```
 
 Fitness is the mean score margin (points for minus points against) over the
-evaluation matches against the ladder. Rating is Elo against the frozen
-anchors (v1; absent or null in v0). `replay` is the match the page re-runs:
-kernel, seed, this cell's genome on `side`, the opponent on the other side.
-The page shows a verified tick when the kernel's final hash equals
-`final_hash`. Seeds are u64; JSON carries them as decimal strings when above
-2^53, so always parse with BigInt on the page.
+evaluation matches against the probe set (v0) or the ladder (v1). Rating is
+Elo against the frozen anchors (v1; null in v0). `replay` is the match the
+page re-runs: kernel, seed, this cell's genome on `side`, the opponent on
+the other side; `points` is `[for this cell's genome, against]`.
+`opponent_id` is a probe genome id with its own `.bin`, or `scripted-v1`,
+which means the kernel's scripted bot (`scripted_slot()`, no genome file).
+The page shows a verified tick when `BigInt.asUintN(64, state_hash())`
+equals `final_hash`, a hex string of 16 digits with a `0x` prefix.
+
+Seeds are u64. JSON carries a seed as a number when it is at most 2^53 and
+as a decimal string above that, so the page always converts with `BigInt`
+and passes a BigInt to the kernel.
 
 ## curve.json
 
@@ -87,11 +102,15 @@ thins to every k-th generation but always keeps the last one.
 
 Nodes are archive entrants only: everything that ever held a cell, with
 parents (one for mutation, two for crossover, none for generation zero).
-`alive` is false once evicted. `x, y` are layout coordinates in [0, 1]
-computed by the exporter (layered by generation, siblings spread), so the
-page draws and never lays out. The exporter caps the file: the full champion
-lineage, every live elite, and the last 2,000 entrants; a `tree-full.json`
-holds everything for a "load all" button.
+A cell whose candidates were all rejected has no node. `alive` is false
+once evicted. `champion_lineage` is the champion plus every entrant it
+descends from, oldest first; with crossover it is a DAG, not a chain.
+`x, y` are layout coordinates in [0, 1] computed by the exporter: `x` is
+the generation divided by the last generation, and within a generation
+entrants are spread in `y` ordered by their parents' mean `y`, so families
+stay together. The page draws and never lays out. The exporter caps the
+file: the full champion lineage, every live elite, and the last 2,000
+entrants; `tree-full.json` holds everything for a "load all" button.
 
 ## ladder.json (v1)
 
@@ -105,7 +124,9 @@ holds everything for a "load all" button.
 
 ## genomes/<id>.bin
 
-Raw f32 little-endian, `genome_len` values, nothing else.
+Raw f32 little-endian, `genome_len` values, nothing else. Written for the
+live elites, the champion's ancestors and the probes (the replay opponents),
+once each, never rewritten.
 
 ## Replays
 

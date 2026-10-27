@@ -1,0 +1,7 @@
+Darwin Beach
+Copyright 2026 Daniel Buenrostro
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The slime volleyball physics in kernel/ is ported from slimevolleygym by
+David Ha (2020), Apache License 2.0, https://github.com/hardmaru/slimevolleygym
