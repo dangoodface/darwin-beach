@@ -3,7 +3,7 @@ seed = 20261027
 
 [sim]
 kind = "kernel"
-kernel_path = "artifacts/kernel/5487b2a61f66880a4bd468957b6f662cb0f5afd05ab8ae7ac6736a81b025674a.wasm"
+kernel_path = "artifacts/kernel/93c29e323d3d1d7874286754ae395de50a8e3932b20cd75aa77787ce4387ebfb.wasm"   # kernel version 2: ten descriptors, so every specialist carries juggled_points and max_streak
 max_ticks = 3000
 
 # Warm starts come from this export's lit cells (then the fallback's); sprinter, all_rounder and joga start from its champion.
