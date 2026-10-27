@@ -471,6 +471,41 @@ mod tests {
         assert_eq!(result(0).flags, FLAG_MAX_TICKS);
     }
 
+    /// Kernel version 1, frozen: physics, policy, hash, RNG and scripted-v1
+    /// together. The wasm build gives the same hashes (checked through
+    /// wasmtime when this was written). A failure here means the kernel
+    /// changed: bump KERNEL_VERSION and record new values, never edit these.
+    #[test]
+    fn golden_matches_of_version_1() {
+        let golden: Vec<f32> = (0..GENOME_LEN)
+            .map(|i| ((i * 37 % 101) as f32) / 50.0 - 1.0)
+            .collect();
+        let mut table = vec![0.0f32; 2 * GENOME_LEN];
+        table[GENOME_LEN..].copy_from_slice(&golden);
+        let s = SCRIPTED_SLOT;
+        let cases = [
+            (1, s, s, 0xf2a999205120fb35, 2460, (5, 4)),
+            (2, 1, s, 0xf8693013d2cf24de, 810, (0, 5)),
+            (3, 0, 1, 0x8ce99785486b28fa, 590, (2, 5)),
+            (u64::MAX, 1, 0, 0x5255ac1716b2c9fb, 513, (1, 5)),
+        ];
+        for (seed, a, b, hash, ticks, points) in cases {
+            let mut out = MatchResult::BAD_JOB;
+            run_match(&table, seed, a, b, MAX_TICKS_CAP, None, &mut out);
+            assert_eq!(KERNEL_VERSION, 1);
+            assert_eq!(
+                (
+                    out.final_hash,
+                    out.ticks,
+                    (out.points_a, out.points_b),
+                    out.flags
+                ),
+                (hash, ticks, points, 0),
+                "seed {seed}"
+            );
+        }
+    }
+
     #[test]
     fn interactive_game_replays_a_match() {
         let _guard = exports_lock();
