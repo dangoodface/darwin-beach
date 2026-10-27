@@ -45,3 +45,11 @@ export function coachLine(cell: { margins?: number[] }, probes: string[] | undef
   const verdict = m > 0 ? "ahead" : m < 0 ? "behind" : "level";
   return `Against the coach: ${verdict}, ${margin(m)} on the serves it was graded on.`;
 }
+
+// Serves the bot was never selected on: the only figure allowed to say "beats the coach".
+export function freshLine(cell: { fresh?: { won: number; margin: number } }, matches: number | undefined): string | null {
+  if (!cell.fresh || !matches) return null;
+  const { won, margin: m } = cell.fresh;
+  const verdict = won * 2 > matches ? "beats the coach" : won * 2 === matches ? "plays the coach even" : "loses to the coach";
+  return `On ${matches} fresh serves it ${verdict}: ${won} ${won === 1 ? "win" : "wins"} of ${matches}, ${margin(m)}.`;
+}

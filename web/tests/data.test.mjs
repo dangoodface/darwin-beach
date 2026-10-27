@@ -51,3 +51,12 @@ test("the coach line reads the coach's margin and stays quiet without one", asyn
   assert.equal(coachLine({}, probes, "scripted-v1"), null);
   assert.equal(coachLine({ margins: [1] }, undefined, "scripted-v1"), null);
 });
+
+test("only fresh serves can say beats the coach", async () => {
+  const { freshLine } = await import("../src/describe.ts");
+  assert.equal(freshLine({ fresh: { won: 9, margin: 0.5 } }, 16), "On 16 fresh serves it beats the coach: 9 wins of 16, +0.50 points a match.");
+  assert.equal(freshLine({ fresh: { won: 8, margin: 0 } }, 16), "On 16 fresh serves it plays the coach even: 8 wins of 16, +0.00 points a match.");
+  assert.equal(freshLine({ fresh: { won: 1, margin: -2.6875 } }, 16), "On 16 fresh serves it loses to the coach: 1 win of 16, -2.69 points a match.");
+  assert.equal(freshLine({}, 16), null);
+  assert.equal(freshLine({ fresh: { won: 1, margin: 0 } }, undefined), null);
+});
