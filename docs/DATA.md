@@ -44,6 +44,7 @@ local dev server at `/`. No subdomain and no r2.dev address.
   "kernel_sha": "…", "kernel_version": 1,
   "generated_at": "2026-11-01T12:00:00Z",
   "generation": 412, "era": 0,
+  "probes": ["scripted-v1", "…", "…", "…"],
   "grid": {
     "descriptors": ["court_position", "airtime"],
     "indices": [0, 1],
@@ -53,11 +54,12 @@ local dev server at `/`. No subdomain and no r2.dev address.
   },
   "cells": [
     {"i": 3, "j": 17, "genome_id": "…", "fitness": 2.4, "rating": 1180.5, "lit": true,
+     "margins": [-1.25, 2.88, 4.25, 3.75],
      "bd": [0.19, 0.86], "gen": 388, "era": 0,
      "replay": {"seed": 123456789, "opponent_id": "…", "side": "A",
                 "final_hash": "0x…", "ticks": 2210, "points": [5, 3]}}
   ],
-  "stats": {"filled": 212, "lit": 97, "qd_score": 311.2, "champion_id": "…",
+  "stats": {"filled": 212, "lit": 97, "beats_coach": 3, "qd_score": 311.2, "champion_id": "…",
             "champion_rating": 1234.0, "matches_total": 1880000,
             "matches_per_s": 1430.0, "elapsed_s": 3600}
 }
@@ -69,6 +71,22 @@ gets some bot within seconds of a run starting, so "filled" is not the show;
 a cell is `lit` when its elite's fitness reaches `grid.lit_floor` (0.0: it
 holds its own against the rivals on average), and `stats.lit` counts them.
 The page draws unlit cells dim and lit cells by fitness above the floor.
+
+`probes` is the run's probe set in order, the scripted bot first when the run
+has one, then the frozen probe genomes (the runs row's `probe_ids_json`).
+`cells[].margins` has one number per probe in that order: the elite's mean
+score margin against that opponent over the evaluation seeds on both sides,
+so the mean of `margins` equals `fitness` to floating-point error. It is
+`null` for elites recorded before margins existed (the page treats null as
+"no breakdown"). "Beats the coach" is `margins[0] > 0` when `probes[0]` is
+`scripted-v1`. Added 27 October 2026.
+
+`stats.beats_coach` is the number of occupied cells whose elite has a mean
+margin above zero against `scripted-v1`, and each `curve.json` point carries
+`beats_coach` for the end of that generation (generations with no archive
+event repeat the previous value). Both are `null` for a run with no scripted
+probe or no stored margins. The first cell to beat the coach is the headline
+to watch.
 Decided 27 October 2026 after the first real run filled 400 of 400 in eight
 seconds and took minutes to light them. Rating is
 Elo against the frozen anchors (v1; null in v0). `replay` is the match the
@@ -87,7 +105,7 @@ and passes a BigInt to the kernel.
 
 ```json
 {"run_id": "…", "points": [
-  {"gen": 0, "t": 0, "filled": 14, "lit": 0, "qd_score": 3.1, "champion_rating": null,
+  {"gen": 0, "t": 0, "filled": 14, "lit": 0, "beats_coach": 0, "qd_score": 3.1, "champion_rating": null,
    "best_fitness": -4.2, "era": 0, "matches_total": 2048}
 ]}
 ```
@@ -122,6 +140,18 @@ entrants; `tree-full.json` holds everything for a "load all" button.
 (`export.tree_full_every_s`, default 3600), so for the first hour of a run
 it does not exist: the "load all" button handles a 404 by saying so.
 
+## v1 fields (the ladder, decided 27 October 2026)
+
+When `ladder.enabled` is on: `stats.champion_id` is the ladder's champion
+(`scripted-v1` in era 0, so the page highlights no lineage until the first
+promotion) and `stats.best_id` is the fittest live elite; both exist in v0
+files too, equal to each other. `cells[].rating` and `stats.champion_rating`
+are Elo against the frozen members; `curve.json` points carry
+`champion_rating` (a step that only rises) and `era`; `tree.json` nodes carry
+`rating`. Fitness is comparable only within an era, so with the ladder on the
+page colours by rating. `genomes/` includes every member's `.bin`, so
+champions can be replayed and played against.
+
 ## ladder.json (v1)
 
 ```json
@@ -129,8 +159,13 @@ it does not exist: the "load all" button handles a 404 by saying so.
   {"id": "scripted-v1", "kind": "scripted", "rating": 1000, "since_era": 0},
   {"id": "…", "kind": "champion", "rating": 1150, "since_era": 1,
    "promoted_at_gen": 240, "winrate_vs_previous": 0.58}
-]}
+ ],
+ "matrix": {"ids": ["scripted-v1", "…"], "winrate": [[null, 0.42], [0.58, null]]}}
 ```
+
+`matrix.winrate[r][c]` is how often row `r` beat column `c` over the
+promotion and rating matches, `null` where they never played. The page draws
+it as the who-beats-whom table and flags cycles.
 
 ## genomes/<id>.bin
 

@@ -91,7 +91,7 @@ class Evaluator:
         results = self.workers.play(table, jobs, self.max_ticks)
         self.matches_total += len(jobs)
 
-        per_opp = len(self.seeds) * 2
+        per_opp = len(self.seeds) * 2  # matches per opponent: opponent-major, then seed, then side
         per = len(opponents) * per_opp
         n_probe = len(self.opponents) * per_opp  # the probe set's matches come first in each block
         out: list[EvalResult] = []
@@ -106,13 +106,16 @@ class Evaluator:
                 mine, theirs = (r.points_a, r.points_b) if left else (r.points_b, r.points_a)
                 margins.append(mine - theirs)
                 descs.append(r.desc_a if left else r.desc_b)
-            if self.ladder is None:
-                d = np.mean(np.asarray(descs, dtype=np.float64), axis=0)
-                out.append(EvalResult(g, tuple(float(d[j]) for j in self.indices), float(np.mean(margins)), replay))
-                continue
             d = np.mean(np.asarray(descs[:n_probe], dtype=np.float64), axis=0)
+            by_opp = tuple(float(np.mean(margins[k * per_opp : (k + 1) * per_opp]))
+                           for k in range(len(self.opponents)))
+            if self.ladder is None:
+                out.append(EvalResult(g, tuple(float(d[j]) for j in self.indices), float(np.mean(margins)),
+                                      replay, by_opp))
+                continue
             fitness, rating = self._against_members(opponents, margins, per_opp)
-            out.append(EvalResult(g, tuple(float(d[j]) for j in self.indices), fitness, replay, rating))
+            out.append(EvalResult(g, tuple(float(d[j]) for j in self.indices), fitness, replay, by_opp,
+                                  rating=rating))
         return out
 
     def _against_members(self, opponents: list[tuple[str, int]], margins: list[int], per_opp: int) -> tuple[float, float]:
