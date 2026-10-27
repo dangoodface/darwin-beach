@@ -21,6 +21,7 @@ export type Cell = {
   bd: [number, number];
   gen: number;
   era: number;
+  margins?: number[];
   replay: Replay;
 };
 
@@ -31,6 +32,7 @@ export type Latest = {
   generated_at: string;
   generation: number;
   era: number;
+  probes?: string[];
   grid: {
     descriptors: string[];
     bounds: [number, number][];

@@ -35,3 +35,13 @@ export function strengthWords(fitness: number): string {
 export function margin(f: number): string {
   return `${f >= 0 ? "+" : ""}${f.toFixed(2)} points a match`;
 }
+
+// The coach's column in the per-rival margins. Graded on the run's fixed test serves,
+// which flatter the bots picked on them, so the page never calls this "beats the coach".
+export function coachLine(cell: { margins?: number[] }, probes: string[] | undefined, coach: string): string | null {
+  const k = probes?.indexOf(coach) ?? -1;
+  const m = k >= 0 ? cell.margins?.[k] : undefined;
+  if (m === undefined) return null;
+  const verdict = m > 0 ? "ahead" : m < 0 ? "behind" : "level";
+  return `Against the coach: ${verdict}, ${margin(m)} on the serves it was graded on.`;
+}

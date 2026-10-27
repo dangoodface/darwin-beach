@@ -6,7 +6,7 @@ import { Kernel, SCRIPTED_SLOT, FORWARD, BACKWARD, JUMP } from "./kernel.ts";
 import { drawCourt, type CourtColours } from "./court.ts";
 import { Grid } from "./grid.ts";
 import { drawCurve, drawTree } from "./charts.ts";
-import { styleSentence, strengthWords, margin } from "./describe.ts";
+import { styleSentence, strengthWords, margin, coachLine } from "./describe.ts";
 
 const DATA = "data/";
 const TICK_MS = 1000 / 30;
@@ -118,6 +118,9 @@ function renderCell(cell: Cell) {
   $("cell-title").textContent = grid.isChampion(cell) ? "The champion" : `Style ${cell.i + 1}, ${cell.j + 1}`;
   $("cell-style").textContent = styleSentence(cell);
   $("cell-strength").textContent = `${strengthWords(cell.fitness)} (${margin(cell.fitness)} against the four rivals).`;
+  const coach = coachLine(cell, latest.probes, SCRIPTED);
+  $("cell-coach").hidden = coach === null;
+  $("cell-coach").textContent = coach ?? "";
   $("cell-born").textContent = `Born in generation ${cell.gen.toLocaleString("en")}.${isLit(cell, floor) ? "" : " This style has not lit up yet."}`;
   const r = cell.replay;
   const rival = r.opponent_id === SCRIPTED ? "the coach (the hand-written bot every style is measured against)" : "a sparring partner";
