@@ -103,6 +103,25 @@ def lit_curve(events: list[tuple[int, tuple[int, ...], str, float]], floor: floa
     return out
 
 
+def coach_curve(events: list[tuple[int, tuple[int, ...], str, float]], by_id: dict[str, dict],
+                probe_ids: list[str]) -> dict[int, int] | None:
+    """Cells whose elite beats the scripted bot (margin above zero), at the end of each generation
+    that had an archive event. None when the run has no scripted probe or no margins were stored.
+    """
+    if not probe_ids or probe_ids[0] != SCRIPTED_ID or not any(e["margins"] for e in by_id.values()):
+        return None
+    beats: dict[tuple[int, ...], bool] = {}
+    count = 0
+    out: dict[int, int] = {}
+    for gen, cell, gid, _fit in events:
+        m = by_id[gid]["margins"]
+        now = bool(m and m[0] > 0)
+        count += now - beats.get(cell, False)  # swap this cell's old verdict for the new one
+        beats[cell] = now
+        out[gen] = count
+    return out
+
+
 def ancestors(champion: str | None, by_id: dict[str, dict]) -> list[str]:
     """The champion and every entrant it descends from, oldest first."""
     if champion is None:
@@ -179,6 +198,13 @@ def export_run(
                        "ticks": e["replay_ticks"],
                        "points": [e["replay_points_for"], e["replay_points_against"]]},
         })
+    events = store.events(run_id)
+    coach = coach_curve(events, by_id, json.loads(run["probe_ids_json"]))
+    coach_by_gen: dict[int, int | None] = {}
+    carry_c = 0 if coach is not None else None
+    for g in gens:
+        carry_c = coach.get(g["gen"], carry_c) if coach is not None else None
+        coach_by_gen[g["gen"]] = carry_c
     elapsed = last["t_s"]
     _write_json(out / "latest.json", {
         "run_id": run_id, "kernel_sha": kernel_sha, "kernel_version": run["kernel_version"],
@@ -188,20 +214,21 @@ def export_run(
                  "bounds": grid["bounds"], "resolution": grid["resolution"], "lit_floor": floor},
         "cells": cells,
         "stats": {"filled": last["filled"], "lit": sum(1 for c in cells if c["lit"]),
+                  "beats_coach": coach_by_gen[last["gen"]],
                   "qd_score": last["qd_score"], "champion_id": champion,
                   "champion_rating": None, "matches_total": last["matches_total"],
                   "matches_per_s": last["matches_total"] / elapsed if elapsed > 0 else 0.0,
                   "elapsed_s": elapsed},
     })
 
-    lit_by_gen = lit_curve(store.events(run_id), floor)
+    lit_by_gen = lit_curve(events, floor)
     carry = 0
     for g in gens:
         carry = lit_by_gen.get(g["gen"], carry)
         lit_by_gen[g["gen"]] = carry
     _write_json(out / "curve.json", {"run_id": run_id, "points": thin([
         {"gen": g["gen"], "t": g["t_s"], "filled": g["filled"], "lit": lit_by_gen.get(g["gen"], 0),
-         "qd_score": g["qd_score"], "champion_rating": None, "best_fitness": g["best_fitness"],
+         "beats_coach": coach_by_gen[g["gen"]], "qd_score": g["qd_score"], "champion_rating": None, "best_fitness": g["best_fitness"],
          "era": g["era"], "matches_total": g["matches_total"]} for g in gens])})
 
     pos = layout(entrants)
