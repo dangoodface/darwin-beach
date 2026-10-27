@@ -96,6 +96,22 @@ margin above zero against `scripted-v1`, and each `curve.json` point carries
 event repeat the previous value). Both are `null` for a run with no scripted
 probe or no stored margins. The first cell to beat the coach is the headline
 to watch.
+
+`stats.fresh`, `cells[].fresh` and `beats_coach_fresh` (added 27 October 2026)
+grade the same claim on serves no selection ever saw. The run draws 8 seeds
+from a stream of its own, never used for fitness, descriptors or the ladder.
+At every export the best live elite and every live elite with a mean margin
+above zero against `scripted-v1` play those 8 seeds on both sides against the
+scripted bot (16 matches each). `cells[].fresh` is `{"won", "margin"}` (matches
+won of 16, mean points for minus against) for each elite checked and `null`
+for the rest. `stats.fresh` is `{"seeds": 8, "matches": 16, "checked": n,
+"beats_coach": elites that won more than 8 of 16, "champion": {"won",
+"margin"}}`, where `champion` is the best elite (`stats.best_id`), not the
+ladder champion. Each `curve.json` point carries `beats_coach_fresh`, the
+count at the latest export at or before that generation, `null` before the
+first export. All three are `null` when the export has no checker (a run with
+no scripted bot, or an export rebuilt from the store afterwards), and the curve
+history is kept in the running process, so a restart begins it again.
 Decided 27 October 2026 after the first real run filled 400 of 400 in eight
 seconds and took minutes to light them. Rating is
 Elo against the frozen anchors (v1; null in v0). `replay` is the match the
