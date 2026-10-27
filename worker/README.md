@@ -32,7 +32,8 @@ make worker-test        # from the repo root
 ```
 
 They cover the path rules, the cache headers and the whole handler with stand-ins
-for R2 and the static files.
+for R2 and the static files, and they check that the page build still writes
+`.assetsignore` (and, once `web/dist` is built, that the file is really there).
 
 ## Deploying later (Daniel's gate)
 
@@ -40,7 +41,13 @@ for R2 and the static files.
    (from `worker/`, after `npm install`). It stays private; only this Worker
    reads it. The uploader writes to it with `tools/upload.py --r2` (see
    `systemd/README.md` for the credentials).
-2. Build the page so `web/dist` exists.
+2. Build the page, from the repo root: `npm --prefix web ci && npm --prefix web run build`.
+   `web/dist` is the whole site. The build also writes `web/dist/.assetsignore`
+   (`data`, `data/*`, `*.map`), and the deploy relies on that file staying there:
+   the dev server links `web/dist/data` to the local runs, and without the
+   ignore file a deploy from this machine would upload them. In production
+   `data/` comes from R2 through the Worker. Check the file is there before
+   deploying: `make worker-test` fails when `web/dist` exists without it.
 3. From `worker/`: `npx wrangler deploy`. The Worker has no public address of
    its own (`workers_dev` is off); it is reached only through the play Worker.
 
