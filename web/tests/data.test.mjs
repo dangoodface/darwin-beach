@@ -42,3 +42,12 @@ test("the main line follows the stronger parent back to generation zero", async 
   };
   assert.deepEqual(mainLine(tree).map((n) => n.id), ["r2", "c", "k"]);
 });
+
+test("the coach line reads the coach's margin and stays quiet without one", async () => {
+  const { coachLine } = await import("../src/describe.ts");
+  const probes = ["scripted-v1", "a", "b", "c"];
+  assert.equal(coachLine({ margins: [0.75, 1, 1, 1] }, probes, "scripted-v1"), "Against the coach: ahead, +0.75 points a match on the serves it was graded on.");
+  assert.equal(coachLine({ margins: [-4.5, 1, 1, 1] }, probes, "scripted-v1"), "Against the coach: behind, -4.50 points a match on the serves it was graded on.");
+  assert.equal(coachLine({}, probes, "scripted-v1"), null);
+  assert.equal(coachLine({ margins: [1] }, undefined, "scripted-v1"), null);
+});
