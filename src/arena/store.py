@@ -69,6 +69,8 @@ class Store:
         cols = {r[1] for r in self.db.execute("PRAGMA table_info(evaluations)")}
         if "margins_json" not in cols:
             self.db.execute("ALTER TABLE evaluations ADD COLUMN margins_json TEXT")
+        if "desc_json" not in cols:
+            self.db.execute("ALTER TABLE evaluations ADD COLUMN desc_json TEXT")
         for t in TABLES:
             for op in ("UPDATE", "DELETE"):
                 self.db.execute(
@@ -110,11 +112,12 @@ class Store:
                 self.db.execute(
                     "INSERT INTO evaluations (run_id, era, kernel_sha, gen, genome_id, fitness, bd_json, n_matches,"
                     " replay_seed, replay_opponent_id, replay_side, replay_final_hash, replay_ticks,"
-                    " replay_points_for, replay_points_against, margins_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    " replay_points_for, replay_points_against, margins_json, desc_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                     (ctx.run_id, ERA, ctx.kernel_sha, info.generation, g.id, r.fitness, json.dumps(list(r.bd)),
                      n_matches, *((str(rp.seed), rp.opponent_id, rp.side, f"0x{rp.final_hash:016x}",
                                    rp.ticks, rp.points[0], rp.points[1]) if rp else (None,) * 7),
-                     json.dumps(list(r.margins)) if r.margins is not None else None))
+                     json.dumps(list(r.margins)) if r.margins is not None else None,
+                     json.dumps(list(r.desc)) if r.desc is not None else None))
                 self.db.execute(
                     "INSERT INTO archive_events (run_id, era, kernel_sha, gen, event, cell_json, genome_id,"
                     " evicted_id, fitness) VALUES (?,?,?,?,?,?,?,?,?)",
@@ -146,7 +149,7 @@ class Store:
         cur = self.db.execute(
             "SELECT g.genome_id, g.gen, g.era, g.op, g.parents_json, e.fitness, e.bd_json, e.replay_seed,"
             " e.replay_opponent_id, e.replay_side, e.replay_final_hash, e.replay_ticks,"
-            " e.replay_points_for, e.replay_points_against, e.margins_json"
+            " e.replay_points_for, e.replay_points_against, e.margins_json, e.desc_json"
             " FROM genomes g JOIN evaluations e ON e.genome_id = g.genome_id"
             " WHERE g.run_id=? AND g.kind='entrant' ORDER BY e.id", (run_id,))
         cols = [c[0] for c in cur.description]
@@ -157,6 +160,8 @@ class Store:
             d["bd"] = json.loads(d.pop("bd_json"))
             m = d.pop("margins_json")
             d["margins"] = json.loads(m) if m else None
+            dj = d.pop("desc_json")
+            d["desc"] = json.loads(dj) if dj else None
             out.append(d)
         return out
 

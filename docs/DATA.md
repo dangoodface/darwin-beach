@@ -45,6 +45,8 @@ local dev server at `/`. No subdomain and no r2.dev address.
   "generated_at": "2026-11-01T12:00:00Z",
   "generation": 412, "era": 0,
   "probes": ["scripted-v1", "…", "…", "…"],
+  "descriptor_names": ["court_position", "airtime", "hits", "mean_hit_height",
+                       "mean_speed_after_hit", "jumps", "distance", "points"],
   "grid": {
     "descriptors": ["court_position", "airtime"],
     "indices": [0, 1],
@@ -55,6 +57,7 @@ local dev server at `/`. No subdomain and no r2.dev address.
   "cells": [
     {"i": 3, "j": 17, "genome_id": "…", "fitness": 2.4, "rating": 1180.5, "lit": true,
      "margins": [-1.25, 2.88, 4.25, 3.75],
+     "desc": [0.19, 0.86, 3.5, 5.2, 37.1, 14.0, 160.2, 3.0],
      "bd": [0.19, 0.86], "gen": 388, "era": 0,
      "replay": {"seed": 123456789, "opponent_id": "…", "side": "A",
                 "final_hash": "0x…", "ticks": 2210, "points": [5, 3]}}
@@ -80,6 +83,12 @@ so the mean of `margins` equals `fitness` to floating-point error. It is
 `null` for elites recorded before margins existed (the page treats null as
 "no breakdown"). "Beats the coach" is `margins[0] > 0` when `probes[0]` is
 `scripted-v1`. Added 27 October 2026.
+
+`descriptor_names` lists the kernel's eight descriptors in ABI order and
+`cells[].desc` carries the elite's mean of all eight over its evaluation
+matches, so `desc` at `grid.indices` equals `bd`. The page draws strategy
+on top of the map from it (hits per match, hit height, speed after contact);
+it is `null` for elites recorded before 27 October 2026.
 
 `stats.beats_coach` is the number of occupied cells whose elite has a mean
 margin above zero against `scripted-v1`, and each `curve.json` point carries

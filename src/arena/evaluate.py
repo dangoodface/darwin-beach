@@ -74,5 +74,5 @@ class Evaluator:
             by_opp = tuple(float(np.mean(margins[k * per_opp : (k + 1) * per_opp]))
                            for k in range(len(self.opponents)))
             out.append(EvalResult(g, tuple(float(d[j]) for j in self.indices), float(np.mean(margins)),
-                                  replay, by_opp))
+                                  replay, by_opp, tuple(float(x) for x in d)))
         return out
