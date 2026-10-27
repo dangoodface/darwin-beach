@@ -1,0 +1,20 @@
+[package]
+name = "slime_kernel"
+version = "1.0.0"
+edition = "2024"
+publish = false
+description = "Slime volleyball kernel for the arena: one wasm module for wasmtime and the browser"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
+[dependencies]
+
+[profile.release]
+opt-level = 3
+panic = "abort"
+lto = true
+codegen-units = 1
+debug = false
+strip = true
