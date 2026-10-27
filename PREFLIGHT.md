@@ -17,7 +17,7 @@ Fable, Opus); this is the synthesis, what was checked today, and what to build f
    Object rows.
 5. Deterministic sims: a replay is (seed, bot ids), re-run in the browser where the sim is small.
 6. Heavy runs under `systemd-run --user -p MemoryMax=...`, data and checkpoints on the SSD, never /tmp.
-7. Its own repo and Cloudflare project. No fairprice. No em dashes in copy.
+7. Its own repo and Cloudflare project, standalone. No em dashes in copy.
 
 ## Verified today
 
@@ -28,7 +28,7 @@ Fable, Opus); this is the synthesis, what was checked today, and what to build f
 | GPU | RTX 5060, 8 GB (compute 12.0), driver reports CUDA 13.4. PyTorch 2.11.0+cu128 installs with uv and sees the card; an 8192x8192 matmul runs. Speed numbers (3.8 TFLOPS fp32, 2.4 fp16) were measured without warm-up, so they are a floor, not a benchmark. Test venv: `~/.cache/arena-preflight` (6.6 GB) |
 | Disk | 661 GB free on the SSD |
 | Python | 3.13 with uv; gcc and make present (pMARS builds from source) |
-| R2 | token lists buckets (`kabza-backups`, `play-thegoodface`), so a new public bucket is one call |
+| R2 | the token can list and create buckets, so a new bucket is one call |
 | Packages | `ribs` 0.12.0 (pyribs, MAP-Elites and CMA-ME), `pymunk` 7.3.1 (2D physics), `cma` installs |
 | Core War | corewar.co.uk up with pMARS and the hills pages; koth.org did not answer |
 

@@ -20,6 +20,6 @@
 - Prose: Daniel's voice. No em dashes, British spelling, dates as
   "26 October 2026". Plain names, short functions, comments that explain the
   game's quirks rather than the code.
-- Nothing from fairprice is imported or copied; this is its own project.
+- This is a standalone project: nothing is imported or copied from any other repository.
 - Commits are small and say what and why; no pushes anywhere until the repo
   has a remote Daniel approved.
