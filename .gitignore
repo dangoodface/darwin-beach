@@ -2,7 +2,7 @@
 __pycache__/
 *.pyc
 kernel/target/
-node_modules/
+node_modules
 web/dist/
 out/
 tmp/
