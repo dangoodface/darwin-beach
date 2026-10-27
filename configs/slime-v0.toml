@@ -23,7 +23,7 @@ sigma = 0.1
 crossover_frac = 0.5
 
 [workers]
-count = 8                    # 8 cores: 8 workers give 97% of 15 and leave the rest to the loop (make bench, 27 October 2026)
+count = 8                    # 8 cores: 8 workers give 97% of 15 and leave the rest to the loop (make bench, 26 October 2026)
 jobs_per_task = 128          # at most the kernel's batch_capacity (256)
 
 [eval]
