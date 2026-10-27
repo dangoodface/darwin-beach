@@ -32,3 +32,32 @@ PPO, a gradient method that learns from the points scored.
   the exported file round-trips and is named by its genome id.
 - **What it is not**: it does not replace evolution on the map. It is a second species to compare: does a
   gradient method find the reach-the-ball behaviour faster than selection does, and which styles does it miss?
+
+### Addendum, 27 October 2026: after ppo-1, what to try next
+
+**What ppo-1 showed.** 13,969 updates, 164.5M ticks in 2.2 hours, and the deterministic policy still lost 0 to 5
+to the coach (best evaluation points for 0.75 of 5, last 0.625; entropy 2.06 of 2.08; KL 0.0002). The unshaped
+reward almost never fires: a random policy scores about once in ten matches, so there is no gradient to follow.
+
+**Why not the elite curriculum.** The archive elites are not an easier opponent. Their fitness is measured against
+the scripted bot and the weakest of the 400 filled cells is -0.8 points a match, the lower quartile is +0.9. Even
+the worst elite plays about as well as the coach, so the learner would meet the same wall under another name.
+
+**Pick: reward shaping with an annealed schedule, on a softened coach.** Both parts live in `rollout.py` and
+`train.py`, with no kernel change.
+1. *Shaping*, potential-based so the optimum is unchanged: `r += gamma*phi(s') - phi(s)`, where phi rewards being
+   under the ball while it is on our side and then the ball being on the opponent's side (all readable from the 12
+   observations). Add a small contact bonus when the ball's vertical velocity flips next to our slime. The weight
+   `w` starts at 1 (a contact is worth about a tenth of a point) and falls linearly to 0 over the first 60% of the
+   run; the last 40% trains on the kernel's +1/-1 only, so what is exported was tuned on the real objective.
+2. *Softened coach*: with probability `p` each tick the opponent's action is replaced by "no press". `p` starts at
+   0.5 and anneals to 0 alongside `w`. It gives the learner points to win in the first minutes, which is the thing
+   it has lacked. Evaluation always uses the unsoftened coach and is the only number that counts.
+
+**First sign of life, within 30 minutes (about 45M ticks):** train points for above 2 of 5 against the softened
+coach, entropy below 1.8, and evaluation points for above 1.5 against the real coach.
+
+**To earn a place on the page, one 2-hour run must show:** evaluation win rate above 0 against the unsoftened coach
+over 64 matches, both sides (0 to 5 does not qualify), at `w = 0` and `p = 0` for at least the last 30 minutes, and
+the exported genome passing `export.py`'s 1,000-state check. If it only wins while shaping is on, it stays off the
+page. If it beats the coach, it plays the archive elites once for the comparison with selection.
