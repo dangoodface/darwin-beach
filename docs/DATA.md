@@ -48,22 +48,29 @@ local dev server at `/`. No subdomain and no r2.dev address.
     "descriptors": ["court_position", "airtime"],
     "indices": [0, 1],
     "bounds": [[0.0, 1.0], [0.0, 1.0]],
-    "resolution": [20, 20]
+    "resolution": [20, 20],
+    "lit_floor": 0.0
   },
   "cells": [
-    {"i": 3, "j": 17, "genome_id": "…", "fitness": 2.4, "rating": 1180.5,
+    {"i": 3, "j": 17, "genome_id": "…", "fitness": 2.4, "rating": 1180.5, "lit": true,
      "bd": [0.19, 0.86], "gen": 388, "era": 0,
      "replay": {"seed": 123456789, "opponent_id": "…", "side": "A",
                 "final_hash": "0x…", "ticks": 2210, "points": [5, 3]}}
   ],
-  "stats": {"filled": 212, "qd_score": 311.2, "champion_id": "…",
+  "stats": {"filled": 212, "lit": 97, "qd_score": 311.2, "champion_id": "…",
             "champion_rating": 1234.0, "matches_total": 1880000,
             "matches_per_s": 1430.0, "elapsed_s": 3600}
 }
 ```
 
 Fitness is the mean score margin (points for minus points against) over the
-evaluation matches against the probe set (v0) or the ladder (v1). Rating is
+evaluation matches against the probe set (v0) or the ladder (v1). Every cell
+gets some bot within seconds of a run starting, so "filled" is not the show;
+a cell is `lit` when its elite's fitness reaches `grid.lit_floor` (0.0: it
+holds its own against the rivals on average), and `stats.lit` counts them.
+The page draws unlit cells dim and lit cells by fitness above the floor.
+Decided 27 October 2026 after the first real run filled 400 of 400 in eight
+seconds and took minutes to light them. Rating is
 Elo against the frozen anchors (v1; null in v0). `replay` is the match the
 page re-runs: kernel, seed, this cell's genome on `side`, the opponent on
 the other side; `points` is `[for this cell's genome, against]`.
@@ -80,7 +87,7 @@ and passes a BigInt to the kernel.
 
 ```json
 {"run_id": "…", "points": [
-  {"gen": 0, "t": 0, "filled": 14, "qd_score": 3.1, "champion_rating": null,
+  {"gen": 0, "t": 0, "filled": 14, "lit": 0, "qd_score": 3.1, "champion_rating": null,
    "best_fitness": -4.2, "era": 0, "matches_total": 2048}
 ]}
 ```

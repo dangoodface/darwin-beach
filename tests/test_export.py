@@ -76,12 +76,17 @@ def test_latest_json(exported):
     assert abs(s["qd_score"] - ctx.archive.qd_score()) < 1e-9
 
 
+def d_lit_expected(ctx):
+    return sum(1 for e in ctx.archive.cells().values() if e.fitness >= 0.0)
+
+
 def test_curve_json(exported):
     ctx, _, _, load = exported
     d = load("curve.json")
     pts = d["points"]
     assert d["run_id"] == ctx.run_id and [p["gen"] for p in pts] == list(range(50))
-    assert set(pts[0]) == {"gen", "t", "filled", "qd_score", "champion_rating", "best_fitness",
+    assert all(0 <= p["lit"] <= p["filled"] for p in pts) and pts[-1]["lit"] == d_lit_expected(ctx)
+    assert set(pts[0]) == {"gen", "t", "filled", "lit", "qd_score", "champion_rating", "best_fitness",
                            "era", "matches_total"}
     assert all(b["filled"] >= a["filled"] and b["qd_score"] >= a["qd_score"] - 1e-9
                for a, b in zip(pts, pts[1:]))

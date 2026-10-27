@@ -22,6 +22,7 @@ class Config:
     bounds: tuple[tuple[float, float], ...] = ((0.0, 1.0), (0.0, 1.0))
     resolution: tuple[int, ...] = (20, 20)
     qd_offset: float = 5.0
+    lit_floor: float = 0.0  # a cell is lit on the page when its elite's fitness reaches this
     batch_size: int = 64
     init_size: int = 100
     sigma: float = 0.1
@@ -59,6 +60,7 @@ class Config:
             bounds=tuple((float(lo), float(hi)) for lo, hi in grid.get("bounds", base.bounds)),
             resolution=tuple(int(r) for r in grid.get("resolution", base.resolution)),
             qd_offset=float(grid.get("qd_offset", base.qd_offset)),
+            lit_floor=float(grid.get("lit_floor", base.lit_floor)),
             batch_size=int(opt.get("batch_size", base.batch_size)),
             init_size=int(opt.get("init_size", base.init_size)),
             sigma=float(opt.get("sigma", base.sigma)),
@@ -105,7 +107,7 @@ class Config:
             "sim": {"kind": self.sim_kind, "kernel_path": self.kernel_path, "max_ticks": self.max_ticks},
             "grid": {"descriptors": list(self.descriptors), "indices": list(self.indices),
                      "bounds": [list(b) for b in self.bounds], "resolution": list(self.resolution),
-                     "qd_offset": self.qd_offset},
+                     "qd_offset": self.qd_offset, "lit_floor": self.lit_floor},
             "optim": {"batch_size": self.batch_size, "init_size": self.init_size,
                       "sigma": self.sigma, "crossover_frac": self.crossover_frac},
             "workers": {"count": self.workers, "jobs_per_task": self.jobs_per_task},

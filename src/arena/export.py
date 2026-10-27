@@ -86,6 +86,23 @@ def layout(entrants: list[dict]) -> dict[str, tuple[float, float]]:
     return pos
 
 
+def lit_curve(events: list[tuple[int, tuple[int, ...], str, float]], floor: float) -> dict[int, int]:
+    """Lit cells at the end of each generation that had an archive event, by replaying the events.
+
+    Every cell gets some bot within seconds; a cell is lit only once its elite's fitness reaches the
+    floor, which is the fill that takes time and the one the page shows. Generations without an
+    event keep the previous count (the caller reads the last known value).
+    """
+    cells: dict[tuple[int, ...], float] = {}
+    out: dict[int, int] = {}
+    last = 0
+    for gen, cell, _gid, fit in events:
+        cells[cell] = fit
+        last = sum(1 for f in cells.values() if f >= floor)
+        out[gen] = last
+    return out
+
+
 def ancestors(champion: str | None, by_id: dict[str, dict]) -> list[str]:
     """The champion and every entrant it descends from, oldest first."""
     if champion is None:
@@ -149,11 +166,13 @@ def export_run(
         _write_once(out / "kernel" / f"{kernel_sha}.wasm", blob)
 
     grid = cfg["grid"]
+    floor = float(grid.get("lit_floor", 0.0))
     cells = []
     for cell, gid in sorted(occupants.items()):
         e = by_id[gid]
         cells.append({
             "i": cell[0], "j": cell[1], "genome_id": gid, "fitness": e["fitness"], "rating": None,
+            "lit": e["fitness"] >= floor,
             "bd": e["bd"], "gen": e["gen"], "era": e["era"],
             "replay": {"seed": _json_seed(e["replay_seed"]), "opponent_id": e["replay_opponent_id"],
                        "side": e["replay_side"], "final_hash": e["replay_final_hash"],
@@ -165,18 +184,24 @@ def export_run(
         "run_id": run_id, "kernel_sha": kernel_sha, "kernel_version": run["kernel_version"],
         "generated_at": _iso(now), "generation": last["gen"], "era": last["era"],
         "grid": {"descriptors": grid["descriptors"], "indices": grid["indices"],
-                 "bounds": grid["bounds"], "resolution": grid["resolution"]},
+                 "bounds": grid["bounds"], "resolution": grid["resolution"], "lit_floor": floor},
         "cells": cells,
-        "stats": {"filled": last["filled"], "qd_score": last["qd_score"], "champion_id": champion,
+        "stats": {"filled": last["filled"], "lit": sum(1 for c in cells if c["lit"]),
+                  "qd_score": last["qd_score"], "champion_id": champion,
                   "champion_rating": None, "matches_total": last["matches_total"],
                   "matches_per_s": last["matches_total"] / elapsed if elapsed > 0 else 0.0,
                   "elapsed_s": elapsed},
     })
 
+    lit_by_gen = lit_curve(store.events(run_id), floor)
+    carry = 0
+    for g in gens:
+        carry = lit_by_gen.get(g["gen"], carry)
+        lit_by_gen[g["gen"]] = carry
     _write_json(out / "curve.json", {"run_id": run_id, "points": thin([
-        {"gen": g["gen"], "t": g["t_s"], "filled": g["filled"], "qd_score": g["qd_score"],
-         "champion_rating": None, "best_fitness": g["best_fitness"], "era": g["era"],
-         "matches_total": g["matches_total"]} for g in gens])})
+        {"gen": g["gen"], "t": g["t_s"], "filled": g["filled"], "lit": lit_by_gen.get(g["gen"], 0),
+         "qd_score": g["qd_score"], "champion_rating": None, "best_fitness": g["best_fitness"],
+         "era": g["era"], "matches_total": g["matches_total"]} for g in gens])})
 
     pos = layout(entrants)
     nodes = []
