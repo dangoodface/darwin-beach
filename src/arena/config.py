@@ -33,6 +33,7 @@ class Config:
     seeds_per_probe: int = 4
     eval_seeds: tuple[int, ...] = field(default_factory=tuple)  # empty: drawn from the run seed
     export_every_s: float = 60.0
+    tree_full_every_s: float = 3600.0  # tree-full.json grows without bound: at the end, and at most this often
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Config":
@@ -61,6 +62,7 @@ class Config:
             seeds_per_probe=int(ev.get("seeds_per_probe", base.seeds_per_probe)),
             eval_seeds=tuple(int(s) for s in ev.get("eval_seeds", ())),
             export_every_s=float(ex.get("every_s", base.export_every_s)),
+            tree_full_every_s=float(ex.get("tree_full_every_s", base.tree_full_every_s)),
         )
         cfg.validate()
         return cfg
@@ -91,7 +93,7 @@ class Config:
             "workers": {"count": self.workers, "jobs_per_task": self.jobs_per_task},
             "eval": {"scripted_probe": self.scripted_probe, "probe_count": self.probe_count, "seeds_per_probe": self.seeds_per_probe,
                      "eval_seeds": [str(s) for s in self.eval_seeds]},
-            "export": {"every_s": self.export_every_s},
+            "export": {"every_s": self.export_every_s, "tree_full_every_s": self.tree_full_every_s},
         }
 
 

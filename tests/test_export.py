@@ -154,3 +154,34 @@ def test_kernel_file_is_copied_and_checked(tmp_path):
     st.db.commit()
     with pytest.raises(ValueError, match="does not match"):
         export_run(st, ctx.run_id, root, now=NOW)
+
+
+def test_tree_full_is_throttled_but_always_written_at_the_end(tmp_path):
+    so = StoreObserver(tmp_path)
+    present_during_run = []
+
+    class Spy:
+        def on_start(self, ctx): pass
+        def on_end(self, ctx, info): pass
+        def on_generation(self, ctx, info):
+            present_during_run.append((tmp_path / "out" / ctx.run_id / "tree-full.json").is_file())
+
+    # exports on every generation, tree-full at most once an hour: only the final export writes it
+    ctx = run(_cfg(), [so, ExportObserver(so, 0.0, tmp_path, 3600.0), Spy()], generations=5, now=NOW)
+    out = tmp_path / "out" / ctx.run_id
+    assert not any(present_during_run)
+    assert (out / "tree.json").is_file() and (out / "tree-full.json").is_file()
+
+
+def test_tree_full_with_a_zero_interval_is_written_every_time(tmp_path):
+    so = StoreObserver(tmp_path)
+    present = []
+
+    class Spy:
+        def on_start(self, ctx): pass
+        def on_end(self, ctx, info): pass
+        def on_generation(self, ctx, info):
+            present.append((tmp_path / "out" / ctx.run_id / "tree-full.json").is_file())
+
+    run(_cfg(), [so, ExportObserver(so, 0.0, tmp_path, 0.0), Spy()], generations=3, now=NOW)
+    assert all(present)

@@ -139,7 +139,7 @@ def main() -> None:
         from .store import StoreObserver
 
         so = StoreObserver()
-        observers = [so, ExportObserver(so, cfg.export_every_s)]
+        observers = [so, ExportObserver(so, cfg.export_every_s, tree_full_every_s=cfg.tree_full_every_s)]
     ctx = run(cfg, observers, generations=args.generations, max_seconds=args.max_seconds)
     print(f"{ctx.run_id}: filled {ctx.archive.filled()}/{ctx.archive.capacity()}, "
           f"qd {ctx.archive.qd_score():.1f}")
