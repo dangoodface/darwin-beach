@@ -1,0 +1,18 @@
+# User unit for the trainer. Written, not installed: see systemd/README.md.
+[Unit]
+Description=Slime arena trainer (MAP-Elites loop, store and exporter)
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/arena-trainer
+Environment=ARENA_DATA=%h/.local/share/arena
+ExecStart=%h/projects/arena-trainer/.venv/bin/python -m arena.run --config configs/slime-v0.toml
+# the budget from docs/CONVENTIONS.md: 15 workers on 16 threads, one core left for the desktop
+MemoryMax=4G
+CPUQuota=1400%
+Nice=5
+Restart=on-failure
+RestartSec=30
+
+[Install]
+WantedBy=default.target
