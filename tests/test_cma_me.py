@@ -83,7 +83,7 @@ def test_configs_and_defaults():
     assert load_config("configs/slime-v0.toml").optim_kind == "map_elites"
     r3, r4 = load_config("configs/night/r3.toml"), load_config("configs/night/r4-cma.toml")
     changed = {f.name for f in dataclasses.fields(r3) if getattr(r3, f.name) != getattr(r4, f.name)}
-    assert changed == {"slug", "seed", "optim_kind"}
+    assert changed == {"slug", "optim_kind"}  # run 4 shares run 3's seed: only the optimiser differs
     assert r4.optim_kind == "cma_me" and r4.batch_size % r4.cma_emitters == 0
     with pytest.raises(ValueError):
         _cfg(batch_size=10, cma_emitters=4).validate()

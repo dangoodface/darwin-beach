@@ -8,8 +8,9 @@
 //
 // Input (little-endian): u32 genome count, u32 job count, u32 max_ticks,
 // then genome_len f32 per genome, then 16-byte jobs (u64 seed, u32 a, u32 b).
-// Output per job: u32 ticks, u32 flags, u64 final hash, then ticks u64 tick
-// hashes. --text prints "job tick hash" lines instead, for reading by eye.
+// Output per job: u32 ticks, u32 flags, u64 final hash, the whole result block
+// (24 + 16 * desc_count bytes: descriptors included), then ticks u64 tick hashes.
+// --text prints "job tick hash" lines instead, for reading by eye.
 
 import { readFileSync, writeSync } from "node:fs";
 
@@ -22,6 +23,7 @@ if (!wasmPath) {
 const { instance } = await WebAssembly.instantiate(readFileSync(wasmPath), {});
 const k = instance.exports;
 const genomeLen = k.genome_len();
+const blockBytes = 24 + 16 * (k.desc_count ? k.desc_count() : 8); // version 1 has eight, and no export
 
 const input = readFileSync(0);
 const head = new DataView(input.buffer, input.byteOffset, input.byteLength);
@@ -64,7 +66,8 @@ for (let j = 0; j < nJobs; j++) {
   header.writeUInt32LE(ticks, 0);
   header.writeUInt32LE(flags, 4);
   header.writeBigUInt64LE(finalHash, 8);
-  chunks.push(header, Buffer.from(hashes)); // copies before the next match reuses the buffer
+  const block = new Uint8Array(k.memory.buffer, results, blockBytes);
+  chunks.push(header, Buffer.from(block), Buffer.from(hashes)); // copies before the next match reuses the buffers
 }
 
 if (mode !== "--text") {

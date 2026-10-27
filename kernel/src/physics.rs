@@ -361,6 +361,9 @@ pub struct Game {
     pub hash: u64,
     /// Sign of the most recent point (+1 A, -1 B), 0 before the first.
     pub last_point: i32,
+    /// Whether the ball ended the last hashed tick in A's half (x <= 0, the same
+    /// line that scores a landing for B). Juggling only, version 2.
+    pub ball_on_a: bool,
     pub flags: u32,
     pub desc: [Descriptors; 2],
 }
@@ -384,6 +387,7 @@ impl Game {
             tick: 0,
             hash: FNV_OFFSET,
             last_point: 0,
+            ball_on_a: true,
             flags: 0,
             desc: [Descriptors::ZERO; 2],
         }
@@ -445,6 +449,7 @@ impl Game {
         // The ball landing on the left (x <= 0) is a point for B, and Python
         // returns before `updateState`, so observations go stale for a tick.
         let point = self.ball.check_edges();
+        let ball_x = self.ball.x; // where this tick left the ball, before any new serve
         if point != 0 {
             self.ball = serve(&mut self.rng);
             self.delay = INIT_DELAY_FRAMES;
@@ -467,8 +472,25 @@ impl Game {
         self.tick += 1;
         self.desc[0].add_tick(&self.a, a_before, hits[0], point > 0);
         self.desc[1].add_tick(&self.b, b_before, hits[1], point < 0);
+        self.juggle_tick(ball_x, point);
         self.hash_tick();
         point
+    }
+
+    /// A net crossing sends the streak of the side the ball left; a point lets the
+    /// winner's last sent streak count. Reads the state, never writes the physics.
+    fn juggle_tick(&mut self, ball_x: f64, point: i32) {
+        let on_a = ball_x <= 0.0;
+        if self.ball_on_a && !on_a {
+            self.desc[0].juggle.sent();
+        } else if !self.ball_on_a && on_a {
+            self.desc[1].juggle.sent();
+        }
+        if point != 0 {
+            self.desc[0].juggle.point_over(point > 0);
+            self.desc[1].juggle.point_over(point < 0);
+        }
+        self.ball_on_a = self.ball.x <= 0.0; // after a point, the new serve at x = 0
     }
 
     fn ball_speed(&self) -> f64 {
@@ -562,6 +584,36 @@ mod tests {
         assert!(bounced, "the ball never bounced off the slime");
         assert_eq!(game.desc[0].hits, 1);
         assert_eq!(game.a.life, MAXLIVES);
+    }
+
+    #[test]
+    fn a_ball_bouncing_on_a_still_head_builds_a_streak_that_never_counts() {
+        let mut game = Game::new(3);
+        game.delay = 0;
+        game.ball = Particle::new(game.a.x, 6.0, 0.0, 0.0, BALL_RADIUS);
+        for _ in 0..600 {
+            game.set_actions(0, 0);
+            game.step();
+        }
+        let j = game.desc[0].juggle;
+        assert!(
+            j.max_streak >= 4 && j.max_streak == game.desc[0].hits,
+            "{j:?}"
+        );
+        assert_eq!(j.juggled_points, 0); // never sent, never a point
+        assert!(game.ball_on_a);
+    }
+
+    #[test]
+    fn the_ball_changes_half_when_it_crosses_the_net() {
+        let mut game = Game::new(4);
+        game.delay = 0;
+        game.ball = Particle::new(-1.0, 9.0, 12.0, 0.0, BALL_RADIUS);
+        assert!(game.ball_on_a);
+        for _ in 0..10 {
+            game.step();
+        }
+        assert!(game.ball.x > 0.0 && !game.ball_on_a);
     }
 
     #[test]

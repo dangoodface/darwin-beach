@@ -84,8 +84,10 @@ so the mean of `margins` equals `fitness` to floating-point error. It is
 "no breakdown"). "Beats the coach" is `margins[0] > 0` when `probes[0]` is
 `scripted-v1`. Added 27 October 2026.
 
-`descriptor_names` lists the kernel's eight descriptors in ABI order and
-`cells[].desc` carries the elite's mean of all eight over its evaluation
+`descriptor_names` lists the run kernel's descriptors in ABI order, taken
+from the run's recorded kernel version: eight for version 1 (and the pretend
+game), ten from version 2, which adds `juggled_points` and `max_streak`.
+`cells[].desc` carries the elite's mean of all of them over its evaluation
 matches, so `desc` at `grid.indices` equals `bd`. The page draws strategy
 on top of the map from it (hits per match, hit height, speed after contact);
 it is `null` for elites recorded before 27 October 2026.

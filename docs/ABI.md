@@ -1,7 +1,14 @@
-# Kernel ABI, version 1
+# Kernel ABI, version 2
 
 Rulings of 26 October 2026 (Opus's eight gaps and Sonnet's probe question)
 are folded in below; the scripted bot is a reserved slot.
+
+Version 2 (27 October 2026) adds two descriptors per side, juggled_points and
+max_streak, for JOGA BONITO, and the `desc_count()` export; result blocks grow
+from 152 to 184 bytes. The game does not move by a bit: physics, policy,
+hash, RNG and the scripted bot are version 1's, so every version 1 match,
+replay and stored hash plays out identically under version 2, with the same
+first eight descriptors.
 
 One WebAssembly module, `slime_kernel.wasm`, built from `kernel/` (Rust,
 target `wasm32-unknown-unknown`, plain `extern "C"` exports, no wasm-bindgen).
@@ -57,7 +64,9 @@ No fused multiply-add, no pairwise sums.
 ## Exports
 
 Constants
-- `kernel_version() -> u32`: 1.
+- `kernel_version() -> u32`: 2 (1 for the first module).
+- `desc_count() -> u32`: 10, the descriptors per side in a result block. A
+  version 1 module has no such export and always 8.
 - `genome_len() -> u32`: 515.
 - `max_ticks_cap() -> u32`: 3000. `max_ticks` arguments above it are an error.
 - `table_capacity() -> u32`: 1024 genomes. `batch_capacity() -> u32`: 256 jobs.
@@ -69,8 +78,8 @@ Memory (byte offsets into the exported `memory`; all static, no allocator)
   genome i. The caller fills slots with one bulk copy each.
 - `jobs_ptr() -> u32`: `batch_capacity` jobs of 16 bytes: `seed u64, a u32,
   b u32` (slot indexes into the genome table).
-- `results_ptr() -> u32`: `batch_capacity` result blocks of 152 bytes (layout
-  below). `play_match` writes block 0; `play_batch` writes block i for job i.
+- `results_ptr() -> u32`: `batch_capacity` result blocks of 184 bytes, 152 in
+  version 1 (layout below). `play_match` writes block 0; `play_batch` writes block i for job i.
 - `tick_hash_ptr() -> u32`: `u64[max_ticks_cap]`, filled by `play_match`
   when `record_hashes` is nonzero. `tick_hash[i]` is the running hash after
   tick `i + 1` (the state block's `tick` is the 1-based count after a step).
@@ -105,7 +114,7 @@ Interactive (for the browser, and for tests)
   opponent, so any change is a kernel version bump.
 - `state_hash() -> u64`: the running hash of the interactive game.
 
-## Result block (152 bytes)
+## Result block (184 bytes; 152 in version 1)
 
 | offset | type | field |
 |---|---|---|
@@ -114,8 +123,8 @@ Interactive (for the browser, and for tests)
 | 12 | u32 | points_a |
 | 16 | u32 | points_b |
 | 20 | u32 | flags: bit 0 NaN or infinity seen, bit 1 ended on `max_ticks` with both sides still holding lives, bit 2 bad job |
-| 24 | f64[8] | descriptors A |
-| 88 | f64[8] | descriptors B |
+| 24 | f64[10] | descriptors A (f64[8] in version 1) |
+| 104 | f64[10] | descriptors B (at 88, f64[8], in version 1) |
 
 ## Descriptors, per side, over the whole match
 
@@ -129,9 +138,29 @@ Interactive (for the browser, and for tests)
 | 5 | jumps | count of ticks where the slime's y went from `<= 1.5` to `> 1.5` |
 | 6 | distance | sum over ticks of `|x after update - x before|` |
 | 7 | points | points won |
+| 8 | juggled_points | points won with a juggle (version 2; below) |
+| 9 | max_streak | the longest streak of own touches in the match, sent or not (version 2) |
 
 The x range comes from the slime's own-half clamp: `x*dir` runs from
 `REF_WALL_WIDTH/2 + r = 2.0` at the net to `REF_W/2 - r = 22.5` at the wall.
+
+### Juggling (version 2, Daniel's definition)
+
+Per side, per point. A streak is consecutive own touches (the bounces the
+hits descriptor counts) with no net crossing in between; while a streak is
+open the slime's lowest and highest x are tracked over every hashed tick from
+its first touch on. The ball crosses the net out of a side's half when it
+ends a tick on the other side of `x = 0` from where it ended the last one (A's
+half is `x <= 0`, the same line that scores a landing for B; the serve starts
+on it). That crossing sends the side's streak: its touches and its span
+(highest minus lowest x) are kept, and a new streak can start. When the point
+ends, the winner's most recently sent streak decides: the point is juggled
+when it had at least `JUGGLE_MIN_TOUCHES = 4` touches and a span of at least
+`JUGGLE_MIN_SPAN = 20.5 / 2 = 10.25`, half the slime's own court. Streaks,
+spans and sent streaks reset with every point; juggled_points and max_streak
+add up over the match. In a tick, touches count before the crossing, and the
+crossing before the point. The tracker reads the state after the NaN check
+and never writes the physics or the hash. Constants in `kernel/src/juggle.rs`.
 
 ## State block (f64 from `state_ptr`)
 
@@ -204,6 +233,8 @@ Start: ball at (0, 12) with the random vx and vy, A at (-12, 1.5), B at
 ## Versioning
 
 Any change to physics, policy, descriptors, hash, RNG or the scripted bot
-bumps `kernel_version`. A built module is stored as
+bumps `kernel_version`. Version 1 is `5487b2a6…`; version 2, which adds the
+juggle descriptors and nothing else, is `93c29e32…` (full shas in
+`artifacts/kernel/README.md`). A built module is stored as
 `artifacts/kernel/<sha256>.wasm` and never deleted; every genome, snapshot
 and replay records the kernel sha it was made with.

@@ -57,7 +57,7 @@ mod tests {
         seed: u64,
         left: impl Fn(&[f64; 12]) -> u32,
         right: impl Fn(&[f64; 12]) -> u32,
-    ) -> ([f64; 8], u32, u32) {
+    ) -> ([f64; crate::descriptors::N_DESC], u32, u32) {
         let mut game = Game::new(seed);
         while !game.is_done(3000) {
             let (a, b) = (left(&game.a.obs), right(&game.b.obs));
