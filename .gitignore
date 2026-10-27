@@ -10,3 +10,4 @@ tmp/
 *.sqlite-wal
 *.sqlite-shm
 .pytest_cache/
+web/data

@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Darwin Beach</title>
+<meta name="description" content="Where volleyball evolves. Nobody programs these slimes to play: the winners have kids, and a map lights up with every way to play.">
+<meta property="og:title" content="Darwin Beach">
+<meta property="og:description" content="Where volleyball evolves. Watch bots teach themselves volleyball, then play one yourself.">
+<meta name="theme-color" content="#0b1026">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* Layout: a night beach. The map and the court sit side by side (stacked on a phone);
+     the story of the run (curve, family tree) runs underneath. One committed night look. */
+  :root {
+    color-scheme: dark;
+    --night: #0b1026;
+    --night-2: #131a3a;
+    --sea: #101a44;
+    --rule: #26305e;
+    --ink: #eef3ff;
+    --muted: #9aa6cf;
+    --slime: #39ff9f;
+    --slime-wash: rgba(57, 255, 159, 0.14);
+    --rival: #ff4fc8;
+    --sun: #ffc93c;
+    --sand: #d9b26a;
+    --foam: #cfe3ff;
+    --dim-cell: #1c2550;
+    --node: rgba(154, 166, 207, 0.35);
+    --sun-faint: rgba(255, 201, 60, 0.10);
+    --display: "Press Start 2P", "Courier New", monospace;
+    --body: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; background: var(--night); color: var(--ink); }
+  body { font-family: var(--body); font-size: 14px; line-height: 1.6; }
+  a { color: var(--sun); }
+  :focus-visible { outline: 2px solid var(--sun); outline-offset: 3px; }
+  .wrap {
+    max-width: 1120px; margin: 0 auto; display: grid; gap: 28px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: max(22px, env(safe-area-inset-top, 0px)) 48px;
+  }
+  header { display: grid; gap: 10px; }
+  .back { font-size: 12px; color: var(--muted); text-decoration: none; }
+  h1 { font-family: var(--display); font-weight: 400; margin: 0; font-size: clamp(26px, 6vw, 48px); line-height: 1.15; letter-spacing: 1px; }
+  h1 .d { color: var(--slime); } h1 .b { color: var(--rival); }
+  .tag { font-size: clamp(15px, 2.2vw, 18px); color: var(--ink); max-width: 60ch; margin: 0; }
+  .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .stat { background: var(--night-2); border: 1px solid var(--rule); padding: 10px 12px; display: grid; gap: 2px; min-width: 0; }
+  .stat .k { font-size: 11px; color: var(--muted); letter-spacing: .04em; }
+  .stat .v { font-family: var(--display); font-size: clamp(12px, 2vw, 16px); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .stage { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 22px; align-items: start; }
+  .panel { display: grid; gap: 10px; min-width: 0; }
+  h2 { font-family: var(--display); font-weight: 400; font-size: 12px; letter-spacing: 1px; margin: 0; color: var(--foam); }
+  .hint { font-size: 12px; color: var(--muted); margin: 0; min-height: 1.6em; }
+  .mapbox { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 6px; }
+  .yax { writing-mode: vertical-rl; transform: rotate(180deg); display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); letter-spacing: .08em; }
+  .xax { grid-column: 2; display: flex; justify-content: space-between; font-size: 10px; color: var(--muted); letter-spacing: .08em; }
+  canvas { display: block; width: 100%; max-width: 100%; }
+  #map { aspect-ratio: 1 / 1; cursor: pointer; background: var(--night); border: 1px solid var(--rule); touch-action: manipulation; }
+  #court { aspect-ratio: 8 / 3; border: 1px solid var(--rule); }
+  .card { background: var(--night-2); border: 1px solid var(--rule); padding: 14px; display: grid; gap: 6px; }
+  .card h3 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 12px; color: var(--sun); }
+  .card p { margin: 0; }
+  #cell-style { font-size: 16px; }
+  #cell-born, #cell-match { color: var(--muted); font-size: 13px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { font: 500 13px var(--body); color: var(--ink); background: var(--night-2); border: 1px solid var(--rule); padding: 8px 12px; cursor: pointer; }
+  button:hover { border-color: var(--sun); }
+  button.primary { background: var(--slime); color: var(--night); border-color: var(--slime); font-weight: 700; }
+  #verdict { font-size: 13px; padding: 8px 10px; border-left: 3px solid var(--rule); background: var(--night-2); }
+  #verdict[data-kind="ok"] { border-color: var(--slime); }
+  #verdict[data-kind="ok"]::before { content: "\2713  "; color: var(--slime); font-weight: 700; }
+  #verdict[data-kind="bad"] { border-color: var(--rival); }
+  #verdict[data-kind="bad"]::before { content: "\2717  "; color: var(--rival); font-weight: 700; }
+  #verdict[data-kind="you"] { border-color: var(--sun); }
+  .pad { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+  .pad button { padding: 16px 0; font-size: 18px; touch-action: none; user-select: none; }
+  .story { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 22px; }
+  #curve { aspect-ratio: 5 / 2; }
+  #tree { aspect-ratio: 5 / 2; background: var(--night-2); border: 1px solid var(--rule); }
+  .how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .how div { border-top: 2px solid var(--rule); padding-top: 10px; }
+  .how b { display: block; font-family: var(--display); font-weight: 400; font-size: 11px; color: var(--slime); margin-bottom: 6px; }
+  .how p { margin: 0; color: var(--muted); font-size: 13px; }
+  footer { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 16px; }
+  @media (max-width: 820px) {
+    .stage, .story { grid-template-columns: 1fr; }
+    .how { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="back" href="../">&larr; More games on Goodface Play</a>
+    <h1><span class="d">DARWIN</span> <span class="b">BEACH</span></h1>
+    <p class="tag">Where volleyball evolves. Nobody programs these slimes to play: each one starts with a random brain, the winners have kids, and a map lights up with every way to play.</p>
+    <div class="stats">
+      <div class="stat"><span class="k">Styles lit</span><span class="v" id="stat-lit">&hellip;</span></div>
+      <div class="stat"><span class="k">Generation</span><span class="v" id="stat-gen">&hellip;</span></div>
+      <div class="stat"><span class="k">Matches played</span><span class="v" id="stat-matches">&hellip;</span></div>
+      <div class="stat"><span class="k">Speed</span><span class="v" id="stat-speed">&hellip;</span></div>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="panel" aria-labelledby="map-h">
+      <h2 id="map-h">THE MAP OF STYLES</h2>
+      <div class="mapbox">
+        <div class="yax"><span>GROUNDED</span><span>AIRBORNE</span></div>
+        <canvas id="map" width="600" height="600" aria-label="Map of 400 playing styles. Tap a square to watch it."></canvas>
+        <div class="xax"><span>BACK WALL</span><span>NET</span></div>
+      </div>
+      <p class="hint" id="hover">Tap a square to watch that style play.</p>
+      <p class="hint">Each square is one way to play. It lights up once evolution finds a bot in that style that holds its own; brighter means stronger. The pink frame is the champion.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="court-h">
+      <h2 id="court-h">THE COURT</h2>
+      <canvas id="court" width="960" height="360" aria-label="The selected style's match, replayed on the real game"></canvas>
+      <div id="verdict" data-kind="playing">Loading the game&hellip;</div>
+      <div class="buttons" id="controls">
+        <button type="button" id="pause">Pause</button>
+        <button type="button" id="restart">Replay</button>
+        <button type="button" id="speed">1x</button>
+        <button type="button" id="champion">Show the champion</button>
+        <button type="button" class="primary" id="play">Play this bot</button>
+      </div>
+      <div id="play-mode" class="panel" hidden>
+        <div class="pad">
+          <button type="button" id="t-left" aria-label="Move left">&larr;</button>
+          <button type="button" id="t-jump" aria-label="Jump">&uarr;</button>
+          <button type="button" id="t-right" aria-label="Move right">&rarr;</button>
+        </div>
+        <button type="button" id="back">Back to the replay</button>
+      </div>
+      <div class="card" aria-live="polite">
+        <h3 id="cell-title">&hellip;</h3>
+        <p id="cell-style"></p>
+        <p id="cell-strength"></p>
+        <p id="cell-born"></p>
+        <p id="cell-match"></p>
+      </div>
+    </section>
+  </main>
+
+  <section class="story" aria-label="How the run is going">
+    <div class="panel">
+      <h2 id="curve-label">STYLES LIT, GENERATION BY GENERATION</h2>
+      <canvas id="curve" width="560" height="224"></canvas>
+    </div>
+    <div class="panel">
+      <h2>THE FAMILY TREE</h2>
+      <canvas id="tree" width="560" height="224" aria-label="Every bot that ever held a style, oldest on the left; the champion's bloodline in gold"></canvas>
+      <p class="hint">Every bot that ever held a style, oldest on the left. Gold is the champion's bloodline, back to a slime with a random brain.</p>
+    </div>
+  </section>
+
+  <section class="how" aria-label="How it works">
+    <div><b>RANDOM BRAINS</b><p>Every slime starts with a tiny brain of 515 random numbers. At first they flail.</p></div>
+    <div><b>THE WINNERS HAVE KIDS</b><p>Good players are copied with small random changes, or mixed with another good player. Thousands of matches a second decide who stays.</p></div>
+    <div><b>KEEP EVERY STYLE</b><p>Instead of one champion, the best player of every style is kept. Variety is where surprising strategies come from.</p></div>
+  </section>
+
+  <footer>
+    <span id="status">Loading&hellip;</span>
+    <a href="https://github.com/dangoodface/darwin-beach">Built in public on GitHub</a>
+    <span>Physics after slimevolleygym by David Ha.</span>
+  </footer>
+</div>
+<script type="module" src="dist/app.js"></script>
+</body>
+</html>
