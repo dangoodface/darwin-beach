@@ -10,6 +10,7 @@ help:
 	@echo "make upload    dry-run mirror of out/ into ~/.local/share/arena/mirror"
 	@echo "make verify    re-run every live cell's replay and compare hashes: make verify RUN=<run_id>"
 	@echo "make worker-test    the Worker's pure functions and handler (node --test, no account)"
+	@echo "make summary    measurements of a run in plain words: make summary RUN=<run_id>"
 	@echo "make dev       the page (placeholder until web/ exists)"
 	@echo "make kernel    build the game file and say whether it matches one in artifacts/kernel/"
 	@echo "make parity    twin test: 1,000 matches in wasmtime and in Node, tick by tick"
@@ -33,6 +34,10 @@ upload:
 verify:
 	@test -n "$(RUN)" || { echo "usage: make verify RUN=<run_id>"; exit 2; }
 	uv run python tools/replay.py $(RUN) --all
+
+summary:
+	@test -n "$(RUN)" || { echo "usage: make summary RUN=<run_id>"; exit 2; }
+	uv run python tools/summary.py $(RUN)
 
 dev:
 	@echo "TODO: the page track adds 'npm run dev' in web/ (serves web/ plus a data/ link to out/)"
