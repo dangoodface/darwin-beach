@@ -218,3 +218,99 @@ Decisions:
 - The "Smarter Breeding" level is cleared and the first point goes on the
   smart-breeding skill. Tick 5, the morning summary, comes ten minutes
   after run 5 ends.
+
+## Tick 5, 09:15: the beat repeats on a second seed, and the ladder tells on itself
+
+Run 5 is in: 20261027T130856Z-night-r5-ladder, 07:08:55 to 09:08:55, seed
+20261031, CMA-ME with the ladder on. 16,505 generations, 105.8 million
+matches at 14,695 a second; all 400 cells filled by generation 56; all 400
+stored matches re-played to the same hash. Fewer generations than run 4
+because every candidate also plays each hall-of-fame member: 64 matches a
+candidate at era 0, 224 by era 10.
+
+The coach is beaten again. The champion, cell [16, 10], born generation
+14,889, won 96 of 100 against the coach on the ladder's 50 seeds played on
+both sides, 16 of 16 on its graded serves and 13 of 16 on fresh serves
+(margin +3.00). Two CMA-ME seeds, two coach-beaters; three plain MAP-Elites
+runs, none. The breadth is not run 4's: 8 cells beat the coach on their
+graded serves and 4 of them on fresh serves, against 201 and 136 in run 4.
+The reason is the fitness definition, not the seed: with the ladder on,
+fitness is the margin against the ladder's members, so since era 1 the
+archive has been selected for beating the champions, and the coach is one
+member of eleven. Run 5's lit count (293), QD-score (2,163) and best fitness
+are margins against that ladder and do not compare with runs 1 to 4, where
+fitness was the margin against the probe set.
+
+Two lessons from the ladder's first outing.
+
+First, the coach alone is a cliff. At era 0 the ladder is the coach, so
+every candidate's fitness was its margin against the coach: negative for
+everyone, nothing lit for 8,949 generations (best -2.38 at generation 1,000,
+-1.38 at 4,000, -0.12 at 8,000). In run 4 fitness was the margin against the
+probe set, three frozen random rivals plus the coach, which gives a gradient
+from the first generation. Once the ladder had a champion, fitness had a
+gradient again and nine more promotions followed within 40 minutes.
+
+Second, the rating climbed while the champions got worse. Ten promotions,
+each the fittest elite winning at least 55 per cent of 100 matches against
+the champion and out-rating it; the share against the coach is from the
+same ladder seeds:
+
+| champion (era) | promoted at generation | share against the previous champion | share against the coach | rating |
+|---|---|---|---|---|
+| 1 | 8,949 | 0.56 (the coach was the champion) | 0.56 | 1,041 |
+| 2 | 11,529 | 0.89 | 0.38 | 1,116 |
+| 3 | 11,999 | 0.55 | 0.41 | 1,135 |
+| 4 | 12,409 | 0.66 | 0.33 | 1,204 |
+| 5 | 12,939 | 0.78 | 0.51 | 1,319 |
+| 6 | 13,099 | 0.97 | 0.00 | 1,325 |
+| 7 | 13,629 | 0.695 | 0.00 | 1,405 |
+| 8 | 14,449 | 0.89 | 0.00 | 1,453 |
+| 9 | 14,459 | 0.665 | 0.00 | 1,489 |
+| 10 | 14,889 | 0.74 | 0.96 | 1,645 |
+
+Champions 6 to 9 beat their predecessors by 69 to 97 per cent and lost 100
+of 100 to the coach. The rule promotes a challenger that wins the
+head-to-head and whose Elo rating, fitted against every member's frozen
+rating, exceeds the champion's; beating five champions rated 1,041 to 1,319
+outweighs losing every match to the 1,000-rated coach, and Elo assumes
+transitivity, so the fit hides the cycle. The rating is the line the page
+would have plotted; the who-beats-whom matrix is what caught it, which is
+what it was built for. Champion 10 then beat every member (the coach 96 per
+cent, the past champions 59 to 99) and held through the last 1,616
+generations of checks.
+
+The night in one paragraph. Six starts, five runs finished: run 1 (one hour,
+plain MAP-Elites), run 2 (the two-hour control), run 3 (twice the coach
+matches a candidate), run 4 (CMA-ME on run 3's seed), run 5 (CMA-ME with
+the ladder, a fresh seed); run 5's first start, plain MAP-Elites with the
+ladder, was stopped at generation 256; two reinforcement-learning trainers
+ran and the species is parked with its result written in. Plain MAP-Elites
+never beat the coach in three runs; CMA-ME did on both seeds it ran. The
+fresh-serve check became the only line allowed to say "beats the coach".
+The ladder's first outing found the rating's blind spot before anyone
+plotted it.
+
+Decisions, and what waits for the morning:
+- The promotion rule (Daniel with Opus): a challenger must also hold the
+  anchor, winning at least the threshold against the coach as well as the
+  head-to-head, or beat every member. funsies and Fable recommend holding
+  the anchor and a two-hour run 6 to test it; nothing changed tonight.
+- Fitness at era 0: keep the probe margin in the fitness, or seed the ladder
+  with the three frozen probes, so the map has a gradient from generation 0
+  and lit counts compare across runs. Opus's call on the mechanism.
+- The pitch page (funsies): two seeds, two coach-beaters, by different
+  routes. Run 4's 136 styles and 15 of 16 stay run 4's figures; run 5's are
+  the champion's 96 of 100 and 13 of 16, and four styles on fresh serves.
+- The summary tool was written before eras existed: its lit timeline counts
+  across re-scores (493 of 400 cells at the end) and its regions give 297
+  lit against the export's 293. For Sonnet in the morning.
+- The "Promotions" level is cleared and the honest-scores skill goes up one.
+  "The Hall of Fame" stays in practice: the scores went up when the bots got
+  better only against each other.
+- Daniel's gates, unchanged: the public address
+  (play.thegoodface.ai/darwin-beach/ as its own Worker, not deployed), a
+  storage token scoped to the arena bucket (the stored keys are refused for
+  it), and the pitch page's wording. Done without a gate and reversible:
+  the RL species merged with its negative result, run 5's first start
+  abandoned.

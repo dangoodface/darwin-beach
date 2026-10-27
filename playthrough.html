@@ -277,7 +277,7 @@
 <!-- The crew edits this block as pieces pass their tests. Everything above renders from it. -->
 <script id="state" type="application/json">
 {
-  "save": "SAVE POINT · CHAPTER 3 · THE NIGHT SHIFT · 27 OCT 2026",
+  "save": "SAVE POINT · CHAPTER 3 · THE NIGHT SHIFT, MORNING · 27 OCT 2026",
   "map": {
     "size": 20,
     "lit": [
@@ -2425,7 +2425,7 @@
           "name": "Promotions",
           "desc": "A bot becomes champion only by beating the current one in 55 of 100 matches. Each new champion starts a new era.",
           "test": "the first promotion happens",
-          "state": "locked"
+          "state": "cleared"
         },
         {
           "name": "The Family Tree",
@@ -2474,33 +2474,33 @@
   ],
   "battle": {
     "boss": "THE NIGHT SHIFT",
-    "flavor": "Daniel handed the night to the crew: five long runs, each reviewed and re-decided, with the coach as the thing to beat. Run 4 beat it: the smarter breeding method, on the very same seed as run 3, lit more styles, scored higher and produced 136 bots that beat the coach on serves they were never graded on. Run 5 runs that method with the hall of fame switched on, so champions can be crowned and dethroned.",
-    "hp": 20,
-    "status": "RUN 5 LIVE · 07:09 TO 09:09 · THE LADDER'S DEBUT, BRED THE SMARTER WAY",
+    "flavor": "Daniel handed the night to the crew: five long runs, each reviewed and re-decided, with the coach as the thing to beat. Run 4 beat it on one seed. Run 5 beat it on a second seed with the hall of fame switched on, and the hall of fame crowned ten champions in 53 minutes. Four of them, crowned one after the other, lose to the coach 100 times in 100: they had learned to beat the previous champions, not the game. The rating kept rising through all four; the who-beats-whom table caught it. That is the morning's first decision.",
+    "hp": 0,
+    "status": "BOSS BEATEN · 09:09 · FIVE RUNS, TWO SEEDS, TEN PROMOTIONS",
     "stats": [
       [
-        "RUN 4, FINAL",
-        "26,588 rounds · 108.9M matches"
+        "RUN 5, FINAL",
+        "16,505 rounds · 105.8M matches"
       ],
       [
-        "STYLES LIT, RUN 4",
-        "398 / 400"
+        "PROMOTIONS",
+        "10 eras · champion rating 1,645"
       ],
       [
-        "BEATS THE COACH, FRESH SERVES",
-        "136 styles · best 15 of 16"
+        "BEATS THE COACH, SECOND SEED",
+        "96 of 100 hall serves · 13 of 16 fresh"
       ],
       [
-        "SMARTER VS PLAIN, SAME SEED",
-        "+4.27 vs +2.50 at round 24,000"
+        "CHAMPIONS THE COACH BEATS 100 TO 0",
+        "4 of 10 · caught by the table"
       ]
     ],
     "log": [
-      "> Run 4 verified: all 400 stored matches re-play to the same hash.",
-      "> The coach is beaten. 136 styles win more than half of 16 fresh matches; the best wins 15.",
-      "> Same seed, two methods: smarter breeding led on every figure at every round count.",
-      "> Run 5 restarted at 07:09 with the smarter method and the hall of fame on. First promotions possible.",
-      "> The reinforcement-learning dead end is written down and merged, not deleted."
+      "> Run 5 verified: all 400 stored matches re-play to the same hash.",
+      "> Second seed, second coach-beater: the champion wins 96 of 100 hall serves and 13 of 16 fresh.",
+      "> Nothing beat the coach for 35 minutes, then ten champions in the next 53.",
+      "> Champions 6 to 9 beat their predecessors and lose every match to the coach. The table says so; the rating did not.",
+      "> Night over. Daniel decides: the champion rule, the public address, the storage key, the pitch page."
     ]
   },
   "skills": [
@@ -2530,9 +2530,9 @@
     },
     {
       "name": "HONEST SCORES",
-      "lv": 0,
+      "lv": 1,
       "desc": "How to keep a rising score from lying: measure against opponents that never change, and catch rock, paper, scissors loops.",
-      "unlock": "Goes up at the first promotion"
+      "unlock": "Went up at the first promotion (27 Oct, run 5); up again when a champion must also hold its own against the coach"
     }
   ],
   "achievements": [
@@ -2603,8 +2603,8 @@
       "icon": "[ UP ]",
       "name": "First Promotion",
       "desc": "A bot beats the champion 55 times in 100.",
-      "count": "0",
-      "locked": true
+      "count": "×10",
+      "locked": false
     },
     {
       "icon": "[ GG ]",
@@ -2615,6 +2615,14 @@
     }
   ],
   "events": [
+    {
+      "t": "27 OCT",
+      "text": "<b>The night shift ends.</b> Five long runs reviewed and re-decided by the crew while Daniel slept, one abandoned at round 256, one reinforcement-learning dead end written down and kept. Three runs of the plain method never beat the coach; both runs of the smarter method did. This morning Daniel decides the champion rule, the public address, the storage key and what the pitch page may say."
+    },
+    {
+      "t": "27 OCT",
+      "text": "<b>The hall of fame tells on itself.</b> Run 5 ran the smarter breeding with the hall of fame on: 16,505 rounds, 105.8 million matches. Nothing beat the coach for 35 minutes, then ten champions were crowned in the next 53. The last one beats the coach 96 times in 100 on the hall's serves and 13 of 16 on fresh ones. But four of the ten, crowned one after the other, lose to the coach 100 times in 100: each had learned to beat the champion before it, not the game. The rating rose through all four. The who-beats-whom table caught it, which is what it was built for. Proposed fix: a champion must also hold its own against the coach."
+    },
     {
       "t": "27 OCT",
       "text": "<b>The coach is beaten.</b> Run 4 used the smarter breeding method on run 3's exact seed, so the only difference was the method. At every round count it lit more styles, scored higher and bred stronger bots: 398 of 400 lit, best +4.27 against run 3's +2.50, and 136 styles that beat the coach on serves they were never graded on, the best 15 of 16. One seed so far; run 5 is the second, with the hall of fame switched on."
