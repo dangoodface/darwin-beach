@@ -64,12 +64,15 @@ def test_latest_json(exported):
         if isinstance(r["seed"], str):
             assert int(r["seed"]) > 2**53
         assert (out / "genomes" / f"{c['genome_id']}.bin").stat().st_size == 515 * 4
-        assert (out / "genomes" / f"{r['opponent_id']}.bin").is_file()
+        if r["opponent_id"] != "scripted-v1":  # the scripted bot has no genome file
+            assert (out / "genomes" / f"{r['opponent_id']}.bin").is_file()
+        else:
+            assert not (out / "genomes" / "scripted-v1.bin").exists()
     s = d["stats"]
     assert s["champion_id"] in {c["genome_id"] for c in d["cells"]}
     best = max(c["fitness"] for c in d["cells"])
     assert next(c for c in d["cells"] if c["genome_id"] == s["champion_id"])["fitness"] == best
-    assert s["matches_total"] == 50 * 16 * 2 * 2 * 2 and s["champion_rating"] is None
+    assert s["matches_total"] == 50 * 16 * 3 * 2 * 2  # scripted bot + 2 probe genomes and s["champion_rating"] is None
     assert abs(s["qd_score"] - ctx.archive.qd_score()) < 1e-9
 
 

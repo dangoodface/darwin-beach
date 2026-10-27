@@ -8,12 +8,21 @@ what the tests and the reproducibility check use.
 from __future__ import annotations
 
 import multiprocessing as mp
+from typing import NamedTuple
 
 import numpy as np
 
 from .sim import MatchResult, Simulator
 
 Job = tuple[int, int, int]  # (seed, slot a, slot b)
+
+
+class SimInfo(NamedTuple):
+    kernel_sha: str
+    kernel_version: int
+    genome_len: int
+    scripted_slot: int | None
+
 
 _sim: Simulator | None = None  # the worker process's own simulator
 
@@ -55,10 +64,10 @@ class Workers:
             self._local = make_simulator(kind, kernel_path)
 
     @property
-    def simulator_info(self) -> tuple[str, int, int]:
-        """(kernel_sha, kernel_version, genome_len), read from a local instance."""
+    def simulator_info(self) -> SimInfo:
+        """Read from a local instance."""
         sim = self._local or make_simulator(self.kind, self.kernel_path)
-        return sim.kernel_sha, sim.kernel_version, sim.genome_len
+        return SimInfo(sim.kernel_sha, sim.kernel_version, sim.genome_len, getattr(sim, "scripted_slot", None))
 
     def play(self, table: np.ndarray, jobs: list[Job], max_ticks: int = 3000) -> list[MatchResult]:
         """Play `jobs` against `table` (slot i = row i); results in job order."""

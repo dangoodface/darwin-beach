@@ -28,7 +28,8 @@ def done(tmp_path):
 def test_run_row_keeps_probes_and_seeds(done):
     ctx, st = done
     row = st.run_row(ctx.run_id)
-    assert json.loads(row["probe_ids_json"]) == [p.id for p in ctx.probes]
+    assert json.loads(row["probe_ids_json"]) == ctx.probe_ids
+    assert ctx.probe_ids[0] == "scripted-v1" and ctx.probe_ids[1:] == [p.id for p in ctx.probes]
     assert json.loads(row["eval_seeds_json"]) == [str(s) for s in ctx.cfg.eval_seeds]
     assert json.loads(row["config_json"])["eval"]["eval_seeds"] == [str(s) for s in ctx.cfg.eval_seeds]
     assert row["kernel_sha"] == ctx.kernel_sha and row["era"] == 0
@@ -71,7 +72,7 @@ def test_generations_table(done):
     assert [g["gen"] for g in gens] == list(range(20))
     assert gens[-1]["filled"] == ctx.archive.filled()
     assert abs(gens[-1]["qd_score"] - ctx.archive.qd_score()) < 1e-9
-    assert gens[-1]["matches_total"] == 20 * 16 * 2 * 2 * 2
+    assert gens[-1]["matches_total"] == 20 * 16 * 3 * 2 * 2
 
 
 def test_append_only(done):
