@@ -167,3 +167,54 @@ Run 5, the ladder's debut, is configured (configs/night/r5-ladder.toml):
 run 3's rules on seed 20261031 with the ladder on, a challenge every 10
 generations over 100 matches, promotion at 55 per cent plus out-rating the
 champion. It starts when run 4 ends, about 07:06.
+
+## Tick 4, 07:15: the coach is beaten, on one seed, by smarter breeding
+
+Run 4 final (20261027T110547Z-night-r4-cma, 05:05:46 to 07:05:46, CMA-ME on
+run 3's seed and rules): 26,588 generations, 108.9 million matches at 15,126
+a second, 398 of 400 lit, QD-score 3,031, best fitness +4.27 at cell
+[12, 10], born generation 23,951; all 400 stored matches re-played to the
+same hash. 201 cells beat the coach on their graded serves and 136 of them
+on fresh serves; the best elite won 15 of 16 fresh matches with a margin of
++3.75, and 16 of 16 graded. The first graded coach-beaters appeared before
+generation 2,000 (about nine minutes); by 4,000 there were 47.
+
+Side by side with run 3 at equal generation counts (same seed, so the same
+rivals, evaluation seeds and first random generations; only the optimiser
+differs), plain MAP-Elites first, CMA-ME second:
+
+| generation | lit | QD-score | best fitness | graded coach-beaters |
+|---|---|---|---|---|
+| 1,000 | 248 / 316 | 2,043 / 2,198 | +1.22 / +1.94 | 0 / 0 |
+| 4,000 | 319 / 372 | 2,237 / 2,576 | +1.81 / +3.36 | 0 / 47 |
+| 12,000 | 347 / 393 | 2,371 / 2,865 | +2.20 / +3.89 | 0 / 135 |
+| 24,000 | 366 / 398 | 2,462 / 3,010 | +2.50 / +4.27 | 0 / 195 |
+
+CMA-ME led on every figure at every count, and ran faster per generation
+(271 ms against 289) despite its 75 ms of Python, because stronger bots end
+points sooner. The claim, agreed with funsies: a beat on fresh serves on one
+seed; run 5 is the second seed. Why it works, in one sentence: plain
+MAP-Elites mutates and crosses elites at a fixed step, while each CMA-ME
+emitter adapts its step and direction to what improved the archive and
+restarts from a fresh elite when it stalls; the champion's line of descent
+is 77 genomes long, every step a CMA-ME proposal.
+
+Decisions:
+- Run 5 restarted. It began at 07:06:53 with plain MAP-Elites and the
+  ladder on, as planned at tick 1; at generation 256 nothing was lit (with
+  the ladder on, fitness is the margin against the ladder's members, which
+  at era 0 is the coach alone). Three runs of plain MAP-Elites never beat
+  the coach, so the ladder would most likely have shown no promotion in two
+  hours. funsies and Fable agreed to stop it (20261027T130654Z-night-r5-ladder,
+  abandoned) and restart with CMA-ME plus the ladder on the same seed
+  20261031: 20261027T130856Z-night-r5-ladder, 07:08:55 to 09:08:55. It is
+  the second CMA-ME seed and the first time promotions, eras, re-scoring and
+  the cycle check run for real.
+- Merged into main: the RL species branch with its negative result written
+  into species/ppo/DESIGN.md (funsies: a dead end that is written down is
+  worth keeping), and funsies' cards (331e825): each style shows its
+  fresh-serve verdict, the only line allowed to say "beats the coach". Run
+  3's reels are rendering.
+- The "Smarter Breeding" level is cleared and the first point goes on the
+  smart-breeding skill. Tick 5, the morning summary, comes ten minutes
+  after run 5 ends.

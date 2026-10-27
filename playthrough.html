@@ -2455,7 +2455,7 @@
           "name": "Smarter Breeding",
           "desc": "A cleverer way to choose which bots to copy. Same map, filled faster.",
           "test": "fills the map faster than the first method",
-          "state": "practice"
+          "state": "cleared"
         },
         {
           "name": "The Specialist",
@@ -2474,33 +2474,33 @@
   ],
   "battle": {
     "boss": "THE NIGHT SHIFT",
-    "flavor": "Daniel handed the night to the crew: five long runs, each reviewed and re-decided, with the coach as the thing to beat. Three runs in, the coach is unbeaten: the best bots play it even, no more. Run 4 pits a smarter breeding method against the plain one on the very same seed. The reinforcement-learning species failed its second try and is parked.",
-    "hp": 40,
-    "status": "RUN 4 LIVE · 05:06 TO 07:06 · SMARTER BREEDING ON RUN 3'S SEED",
+    "flavor": "Daniel handed the night to the crew: five long runs, each reviewed and re-decided, with the coach as the thing to beat. Run 4 beat it: the smarter breeding method, on the very same seed as run 3, lit more styles, scored higher and produced 136 bots that beat the coach on serves they were never graded on. Run 5 runs that method with the hall of fame switched on, so champions can be crowned and dethroned.",
+    "hp": 20,
+    "status": "RUN 5 LIVE · 07:09 TO 09:09 · THE LADDER'S DEBUT, BRED THE SMARTER WAY",
     "stats": [
       [
-        "RUN 3, FINAL",
-        "24,873 rounds · 101.9M matches"
+        "RUN 4, FINAL",
+        "26,588 rounds · 108.9M matches"
       ],
       [
-        "STYLES LIT, RUN 3",
-        "366 / 400"
+        "STYLES LIT, RUN 4",
+        "398 / 400"
       ],
       [
-        "VS THE COACH, FRESH SERVES",
-        "best: 6 wins of 16"
+        "BEATS THE COACH, FRESH SERVES",
+        "136 styles · best 15 of 16"
       ],
       [
-        "RL BOT VS COACH",
-        "0 to 5 twice · parked"
+        "SMARTER VS PLAIN, SAME SEED",
+        "+4.27 vs +2.50 at round 24,000"
       ]
     ],
     "log": [
-      "> Run 3 verified: all 400 stored matches re-play to the same hash.",
-      "> With 16 graded matches per bot, nobody beats the coach. Run 2's 21 \"beaters\" were noise.",
-      "> Second RL try: hints faded at 72 minutes and the bot fell back to 0 to 5. Parked.",
-      "> Run 4 started 05:06: smarter breeding (CMA-ME) on run 3's seed, so the only difference is the method.",
-      "> Every export now also grades the best bots on serves they were never selected on."
+      "> Run 4 verified: all 400 stored matches re-play to the same hash.",
+      "> The coach is beaten. 136 styles win more than half of 16 fresh matches; the best wins 15.",
+      "> Same seed, two methods: smarter breeding led on every figure at every round count.",
+      "> Run 5 restarted at 07:09 with the smarter method and the hall of fame on. First promotions possible.",
+      "> The reinforcement-learning dead end is written down and merged, not deleted."
     ]
   },
   "skills": [
@@ -2518,9 +2518,9 @@
     },
     {
       "name": "SMART BREEDING",
-      "lv": 0,
+      "lv": 1,
       "desc": "Better ways to decide which bots to copy next, measured by how fast the map fills. (CMA-ME.)",
-      "unlock": "Goes up when smarter breeding beats the first method"
+      "unlock": "Went up when smarter breeding beat the first method on the same seed (27 Oct, run 4)"
     },
     {
       "name": "SAME RESULT EVERYWHERE",
@@ -2615,6 +2615,10 @@
     }
   ],
   "events": [
+    {
+      "t": "27 OCT",
+      "text": "<b>The coach is beaten.</b> Run 4 used the smarter breeding method on run 3's exact seed, so the only difference was the method. At every round count it lit more styles, scored higher and bred stronger bots: 398 of 400 lit, best +4.27 against run 3's +2.50, and 136 styles that beat the coach on serves they were never graded on, the best 15 of 16. One seed so far; run 5 is the second, with the hall of fame switched on."
+    },
     {
       "t": "27 OCT",
       "text": "<b>Run 3 and the coach.</b> Two hours with twice the coach matches per bot: 24,873 rounds, 366 of 400 styles lit, and not one bot that beats the coach, graded or fresh. The best plays it even. The reinforcement-learning bot got a second try with hints that faded out and lost 0 to 5 again, so it is parked. Run 4 is the first fair test of a smarter breeding method, on the same seed as run 3."
