@@ -1,0 +1,135 @@
+"""The seam between the trainer and a match simulator.
+
+The real simulator is the Rust kernel (src/arena/kernel.py, Track K). Until it
+lands, FakeSimulator answers the same questions with deterministic nonsense so
+the whole loop, store and exporter can run.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from typing import NamedTuple, Protocol
+
+import numpy as np
+
+N_DESC = 8
+MASK64 = (1 << 64) - 1
+
+
+class MatchResult(NamedTuple):
+    final_hash: int  # u64
+    ticks: int
+    points_a: int
+    points_b: int
+    flags: int
+    desc_a: tuple[float, ...]  # 8 values, ABI order
+    desc_b: tuple[float, ...]
+    tick_hashes: tuple[int, ...] | None  # only when record_hashes
+
+
+class Simulator(Protocol):
+    genome_len: int
+    kernel_sha: str  # hex sha256 of the wasm bytes; FakeSimulator uses "fake-" plus a fixed string
+    kernel_version: int
+
+    def load_genomes(self, table: np.ndarray) -> None:
+        """Shape (n, genome_len), float32, slot i = row i."""
+
+    def play(
+        self, seed: int, a: int, b: int, max_ticks: int = 3000, record_hashes: bool = False
+    ) -> MatchResult: ...
+
+    def play_batch(self, jobs: list[tuple[int, int, int]], max_ticks: int = 3000) -> list[MatchResult]:
+        """Jobs are (seed, a, b), slot indexes into the loaded table."""
+
+
+def _u64(*parts: bytes) -> int:
+    h = hashlib.sha256()
+    for p in parts:
+        h.update(p)
+    return int.from_bytes(h.digest()[:8], "little")
+
+
+def _splitmix(x: int) -> int:
+    x = (x + 0x9E3779B97F4A7C15) & MASK64
+    x = ((x ^ (x >> 30)) * 0xBF58476D1CE4E5B9) & MASK64
+    x = ((x ^ (x >> 27)) * 0x94D049BB133111EB) & MASK64
+    return x ^ (x >> 31)
+
+
+class FakeSimulator:
+    """Deterministic stand-in for the kernel.
+
+    Not physics. Each genome is projected through fixed random vectors into eight
+    pseudo-descriptors and a pseudo-strength, so small mutations make small moves
+    on the map and there is something for MAP-Elites to climb. The seed and both
+    genomes are hashed into the noise, so a match is a pure function of its inputs.
+    """
+
+    genome_len = 515
+    kernel_version = 0
+    kernel_sha = "fake-" + hashlib.sha256(b"arena fake simulator v0").hexdigest()[:16]
+
+    def __init__(self) -> None:
+        rng = np.random.default_rng(20261026)
+        self._proj = rng.standard_normal((N_DESC, self.genome_len)) / np.sqrt(self.genome_len)
+        self._target = rng.standard_normal(self.genome_len) * 0.5
+        self._digest: list[int] = []
+        self._desc = np.zeros((0, N_DESC))
+        self._strength = np.zeros(0)
+
+    def load_genomes(self, table: np.ndarray) -> None:
+        table = np.ascontiguousarray(table, dtype=np.float32)
+        if table.ndim != 2 or table.shape[1] != self.genome_len:
+            raise ValueError(f"expected (n, {self.genome_len}) float32, got {table.shape}")
+        g = table.astype(np.float64)
+        z = g @ self._proj.T  # roughly N(0, |g|^2 / genome_len) per descriptor
+        squash = 0.5 + 0.5 * z * 2.0 / (1.0 + np.abs(z * 2.0))
+        desc = np.empty_like(squash)
+        desc[:, 0] = squash[:, 0]  # court_position in [0, 1]
+        desc[:, 1] = squash[:, 1]  # airtime in [0, 1]
+        desc[:, 2] = np.floor(squash[:, 2] * 60.0)  # hits
+        desc[:, 3] = squash[:, 3] * 20.0  # mean_hit_height
+        desc[:, 4] = squash[:, 4] * 22.5  # mean_speed_after_hit
+        desc[:, 5] = np.floor(squash[:, 5] * 40.0)  # jumps
+        desc[:, 6] = squash[:, 6] * 400.0  # distance
+        desc[:, 7] = 0.0  # points: filled per match
+        self._desc = desc
+        self._strength = -np.mean((g - self._target) ** 2, axis=1)
+        self._digest = [_u64(row.tobytes()) for row in table]
+
+    def play(
+        self, seed: int, a: int, b: int, max_ticks: int = 3000, record_hashes: bool = False
+    ) -> MatchResult:
+        if not (0 <= a < len(self._digest) and 0 <= b < len(self._digest)):
+            return MatchResult(0, 0, 0, 0, 4, (0.0,) * N_DESC, (0.0,) * N_DESC, None)
+        h = _splitmix(seed & MASK64 ^ _splitmix(self._digest[a]) ^ (_splitmix(self._digest[b]) << 1 & MASK64))
+        ticks = 300 + h % max(1, min(max_ticks, 3000) - 299)
+        edge = (self._strength[a] - self._strength[b]) * 4.0  # roughly +-1 for typical genomes
+        noise = ((h >> 20) & 0xFFFF) / 65535.0 - 0.5  # [-0.5, 0.5]
+        a_wins = (edge + noise * 1.5) >= 0.0
+        lost = int(np.clip(round(4.0 / (1.0 + np.exp(abs(edge) * 3.0)) * 2.0 + (h >> 40) % 2), 0, 4))
+        points_a, points_b = (5, lost) if a_wins else (lost, 5)
+        desc_a = self._desc[a].copy()
+        desc_b = self._desc[b].copy()
+        desc_a[7], desc_b[7] = points_a, points_b
+        hashes = None
+        if record_hashes:
+            hh, out = h, []
+            for _ in range(ticks):
+                hh = _splitmix(hh)
+                out.append(hh)
+            hashes = tuple(out)
+        return MatchResult(
+            final_hash=_splitmix(h ^ ticks),
+            ticks=int(ticks),
+            points_a=points_a,
+            points_b=points_b,
+            flags=0 if ticks < max_ticks else 2,
+            desc_a=tuple(float(x) for x in desc_a),
+            desc_b=tuple(float(x) for x in desc_b),
+            tick_hashes=hashes,
+        )
+
+    def play_batch(self, jobs: list[tuple[int, int, int]], max_ticks: int = 3000) -> list[MatchResult]:
+        return [self.play(s, a, b, max_ticks) for s, a, b in jobs]
