@@ -116,7 +116,7 @@ def run(
                 o.on_generation(ctx, info)
             gen += 1
 
-        for o in observers:
+        for o in reversed(observers):  # like nested contexts: the exporter ends before the store closes (observers list the store first)
             o.on_end(ctx, info)
     return ctx
 
@@ -126,9 +126,17 @@ def main() -> None:
     ap.add_argument("--config", default="configs/slime-v0.toml")
     ap.add_argument("--generations", type=int)
     ap.add_argument("--max-seconds", type=float)
+    ap.add_argument("--no-store", action="store_true", help="skip the store and the exporter")
     args = ap.parse_args()
     cfg = load_config(Path(args.config))
-    ctx = run(cfg, generations=args.generations, max_seconds=args.max_seconds)
+    observers: list[Observer] = []
+    if not args.no_store:
+        from .export import ExportObserver
+        from .store import StoreObserver
+
+        so = StoreObserver()
+        observers = [so, ExportObserver(so, cfg.export_every_s)]
+    ctx = run(cfg, observers, generations=args.generations, max_seconds=args.max_seconds)
     print(f"{ctx.run_id}: filled {ctx.archive.filled()}/{ctx.archive.capacity()}, "
           f"qd {ctx.archive.qd_score():.1f}")
 
