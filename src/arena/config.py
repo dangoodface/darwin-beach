@@ -27,6 +27,10 @@ class Config:
     init_size: int = 100
     sigma: float = 0.1
     crossover_frac: float = 0.5
+    optim_kind: str = "map_elites"  # or "cma_me" (pyribs, the qd extra)
+    cma_emitters: int = 4  # cma_me: emitters, each proposing batch_size / emitters a generation
+    cma_sigma0: float = 0.1  # cma_me: each emitter's starting step size
+    cma_es: str = "cma_es"  # cma_me: pyribs' evolution strategy ("cma_es", "sep_cma_es", "lm_ma_es")
     workers: int = 15
     jobs_per_task: int = 128
     scripted_probe: bool = True  # the kernel's scripted bot is probe 0
@@ -65,6 +69,10 @@ class Config:
             init_size=int(opt.get("init_size", base.init_size)),
             sigma=float(opt.get("sigma", base.sigma)),
             crossover_frac=float(opt.get("crossover_frac", base.crossover_frac)),
+            optim_kind=opt.get("kind", base.optim_kind),
+            cma_emitters=int(opt.get("emitters", base.cma_emitters)),
+            cma_sigma0=float(opt.get("sigma0", base.cma_sigma0)),
+            cma_es=opt.get("es", base.cma_es),
             workers=int(wk.get("count", base.workers)),
             jobs_per_task=int(wk.get("jobs_per_task", base.jobs_per_task)),
             scripted_probe=bool(ev.get("scripted_probe", base.scripted_probe)),
@@ -97,6 +105,10 @@ class Config:
             raise ValueError("the probe set must be non-empty, and seeds_per_probe and batch_size at least 1")
         if self.ladder_check_every < 1 or self.ladder_seeds < 1 or self.ladder_cycle_window < 1:
             raise ValueError("ladder.check_every, ladder.seeds and ladder.cycle_window must be at least 1")
+        if self.optim_kind not in ("map_elites", "cma_me"):
+            raise ValueError(f"optim.kind must be 'map_elites' or 'cma_me', got {self.optim_kind!r}")
+        if self.optim_kind == "cma_me" and (self.cma_emitters < 1 or self.batch_size % self.cma_emitters):
+            raise ValueError("optim.batch_size must split evenly over optim.emitters")
         if not 0.5 <= self.ladder_threshold <= 1.0:
             raise ValueError("ladder.threshold must be between 0.5 and 1")
 
@@ -109,7 +121,8 @@ class Config:
                      "bounds": [list(b) for b in self.bounds], "resolution": list(self.resolution),
                      "qd_offset": self.qd_offset, "lit_floor": self.lit_floor},
             "optim": {"batch_size": self.batch_size, "init_size": self.init_size,
-                      "sigma": self.sigma, "crossover_frac": self.crossover_frac},
+                      "sigma": self.sigma, "crossover_frac": self.crossover_frac, "kind": self.optim_kind,
+                      "emitters": self.cma_emitters, "sigma0": self.cma_sigma0, "es": self.cma_es},
             "workers": {"count": self.workers, "jobs_per_task": self.jobs_per_task},
             "eval": {"scripted_probe": self.scripted_probe, "probe_count": self.probe_count, "seeds_per_probe": self.seeds_per_probe,
                      "eval_seeds": [str(s) for s in self.eval_seeds]},

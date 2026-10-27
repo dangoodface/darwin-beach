@@ -21,7 +21,7 @@ from .config import Config, load_config
 from .evaluate import Evaluator
 from .genome import Genome, make_genome, random_params
 from .ladder import Challenge, Ladder
-from .optim import EvalResult, MapElites
+from .optim import CmaMe, EvalResult, MapElites
 from .workers import Workers
 
 # Spawn order of the root SeedSequence. Appending is safe; reordering changes every run.
@@ -131,8 +131,13 @@ def run(
             "ladder": {**cfg.to_dict()["ladder"], "seed_list": list(ladder.seeds) if ladder else []}})
 
         archive = Archive(cfg.bounds, cfg.resolution, cfg.qd_offset)
-        opt = MapElites(archive, np.random.default_rng(optim_ss), kernel_sha, genome_len,
-                        cfg.batch_size, cfg.init_size, cfg.sigma, cfg.crossover_frac)
+        optim_rng = np.random.default_rng(optim_ss)
+        if cfg.optim_kind == "cma_me":
+            opt = CmaMe(archive, optim_rng, kernel_sha, genome_len, cfg.batch_size, cfg.init_size,
+                        cfg.cma_emitters, cfg.cma_sigma0, cfg.cma_es)
+        else:
+            opt = MapElites(archive, optim_rng, kernel_sha, genome_len,
+                            cfg.batch_size, cfg.init_size, cfg.sigma, cfg.crossover_frac)
         evaluator = Evaluator(workers, probes, scripted_slot, seeds, cfg.indices, cfg.max_ticks, ladder)
 
         started = now or datetime.now(timezone.utc)
