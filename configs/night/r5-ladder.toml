@@ -1,5 +1,6 @@
-# Night run 5 (27 October 2026, about 07:06): the ladder's debut. Run 3's rules (eight seeds per probe,
-# grid, batch, workers, plain MAP-Elites) scored against the honest ladder: scripted-v1 anchors the
+# Night run 5 (27 October 2026, 07:25, restarted): the ladder's debut, bred by CMA-ME, which beat the coach
+# in run 4 where plain MAP-Elites never did. Run 4's rules (eight seeds per probe, grid, batch, workers,
+# four CMA-ES emitters) scored against the honest ladder: scripted-v1 anchors the
 # ratings at 1000; every 10 generations the fittest elite challenges the champion over 50 seeds on both
 # sides and is promoted, opening a new era, when it wins at least 55 per cent and out-rates the champion.
 # Fitness is the margin against the ladder's members; descriptors still come from the fixed probe set, so
@@ -21,6 +22,10 @@ qd_offset = 5.0
 lit_floor = 0.0              # a cell lights on the page once its elite's fitness (margin against the rivals) reaches this              # fitness is a margin of about -5..5; this keeps QD-score monotone
 
 [optim]
+kind = "cma_me"              # run 4's optimiser; see configs/night/r4-cma.toml
+emitters = 4
+sigma0 = 0.1
+es = "cma_es"
 batch_size = 64              # candidates per generation
 init_size = 100              # random genomes until this many cells are filled
 sigma = 0.1
