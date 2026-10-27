@@ -59,7 +59,7 @@ local dev server at `/`. No subdomain and no r2.dev address.
      "replay": {"seed": 123456789, "opponent_id": "…", "side": "A",
                 "final_hash": "0x…", "ticks": 2210, "points": [5, 3]}}
   ],
-  "stats": {"filled": 212, "lit": 97, "qd_score": 311.2, "champion_id": "…",
+  "stats": {"filled": 212, "lit": 97, "beats_coach": 3, "qd_score": 311.2, "champion_id": "…",
             "champion_rating": 1234.0, "matches_total": 1880000,
             "matches_per_s": 1430.0, "elapsed_s": 3600}
 }
@@ -80,6 +80,13 @@ so the mean of `margins` equals `fitness` to floating-point error. It is
 `null` for elites recorded before margins existed (the page treats null as
 "no breakdown"). "Beats the coach" is `margins[0] > 0` when `probes[0]` is
 `scripted-v1`. Added 27 October 2026.
+
+`stats.beats_coach` is the number of occupied cells whose elite has a mean
+margin above zero against `scripted-v1`, and each `curve.json` point carries
+`beats_coach` for the end of that generation (generations with no archive
+event repeat the previous value). Both are `null` for a run with no scripted
+probe or no stored margins. The first cell to beat the coach is the headline
+to watch.
 Decided 27 October 2026 after the first real run filled 400 of 400 in eight
 seconds and took minutes to light them. Rating is
 Elo against the frozen anchors (v1; null in v0). `replay` is the match the
@@ -98,7 +105,7 @@ and passes a BigInt to the kernel.
 
 ```json
 {"run_id": "…", "points": [
-  {"gen": 0, "t": 0, "filled": 14, "lit": 0, "qd_score": 3.1, "champion_rating": null,
+  {"gen": 0, "t": 0, "filled": 14, "lit": 0, "beats_coach": 0, "qd_score": 3.1, "champion_rating": null,
    "best_fitness": -4.2, "era": 0, "matches_total": 2048}
 ]}
 ```
