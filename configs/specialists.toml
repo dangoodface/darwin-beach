@@ -1,0 +1,65 @@
+# Specialist trainer (src/arena/specialist.py). Run: python -m arena.specialist --style flat_earther --config configs/specialists.toml
+seed = 20261027
+
+[sim]
+kind = "kernel"
+kernel_path = "artifacts/kernel/5487b2a61f66880a4bd468957b6f662cb0f5afd05ab8ae7ac6736a81b025674a.wasm"
+max_ticks = 3000
+
+# Warm starts come from this export's lit cells (then the fallback's); sprinter, all_rounder and joga start from its champion.
+[start]
+run = "20261027T130856Z-night-r5-ladder"
+fallback_run = "20261027T110547Z-night-r4-cma"
+
+# The rivals: genomes under $ARENA_DATA/out/<out_run>/genomes/<id>.bin, and the scripted bot.
+[[rival]]
+id = "d1ee507c2f8232a66c5ac66647f8728595e2c845b8a294f9ee974a2b7d95605e"   # run 5's champion
+kind = "champion"
+out_run = "20261027T130856Z-night-r5-ladder"
+
+[[rival]]
+id = "f3ee2996a6b76cdc021db9fe0213b479a34b81972ed348e251e43ce7c4f9e169"   # run 4's champion
+kind = "champion"
+out_run = "20261027T110547Z-night-r4-cma"
+
+[[rival]]
+id = "scripted-v1"
+kind = "coach"
+
+[es]
+population = 64        # 32 antithetic pairs
+sigma = 0.03           # against a genome scale of about 0.3
+lr = 0.01              # Adam
+train_seeds = 8        # resampled every generation; every candidate in a generation sees the same ones
+graded_seeds = 16      # fixed; re-scores the running best every graded_every generations
+fresh_seeds = 8        # held out, never used in training: the verdict
+graded_every = 5
+
+[penalty]
+weight = 2.0           # points of fitness lost per one scale-width of window violation
+
+# Windows on the mean descriptors over a candidate's matches, from the quartiles of the 800 exported cells of run 4 and
+# run 5 together (27 October 2026): mean_speed_after_hit q25 25.83, q75 34.80, IQR 8.97; mean_hit_height q25 3.83,
+# q75 5.47, IQR 1.64. Top quartile of speed with the bottom quartile of height is a thin region of the map (10 of 800
+# cells for long_ball, 3 for lob_artist); that is the point of a specialist.
+[window.long_ball]
+speed_min = 34.80
+speed_scale = 8.97
+hit_height_max = 3.83
+hit_height_scale = 1.64
+
+[window.lob_artist]
+speed_max = 25.83
+speed_scale = 8.97
+hit_height_min = 5.47
+hit_height_scale = 1.64
+
+# Run 5's champion plays about 433 ticks a point against run 4's champion (345) and the coach (522), over 32 seeds, both
+# sides. Halving that rally is worth one point of margin: lambda = 1 / (433 / 2) = 0.0046 points per tick a point.
+[sprinter]
+lambda = 0.0046
+
+# Needs the kernel with descriptors 8 and 9 (version 2). Window: juggled points at least a third of points won.
+[joga]
+bonus = 0.25
+min_fraction = 0.3333
