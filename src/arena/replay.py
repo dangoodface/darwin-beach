@@ -14,7 +14,7 @@ from pathlib import Path
 
 import numpy as np
 
-from .export import champion_of
+from .export import champion_of, current_fitness
 from .sim import SCRIPTED_ID, Simulator
 from .store import Store, store_path
 from .workers import make_simulator
@@ -85,7 +85,11 @@ def check_all(store: Store, sim: Simulator, run_id: str) -> list[Check]:
 
 
 def champion_id(store: Store, run_id: str) -> str | None:
-    return champion_of(store.entrants(run_id), set(live_cells(store, run_id).values()))
+    """The fittest live elite (stats.best_id), which always has a stored replay; in v1 the ladder's
+    champion can be scripted-v1, which has none."""
+    entrants = store.entrants(run_id)
+    fitness = current_fitness(entrants, store.latest_scores(run_id))
+    return champion_of(entrants, set(live_cells(store, run_id).values()), fitness)
 
 
 def main(argv: list[str] | None = None) -> int:

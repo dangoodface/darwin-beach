@@ -31,6 +31,7 @@ class EvalResult(NamedTuple):
     fitness: float
     replay: Replay | None = None
     margins: tuple[float, ...] | None = None  # mean margin per opponent, in probe order
+    rating: float | None = None  # v1: Elo against the ladder members; None in v0
     desc: tuple[float, ...] | None = None  # all eight mean descriptors, ABI order; bd is desc at the grid's indices
 
 

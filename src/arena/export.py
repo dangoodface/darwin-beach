@@ -136,11 +136,43 @@ def ancestors(champion: str | None, by_id: dict[str, dict]) -> list[str]:
     return sorted(seen, key=lambda g: (by_id[g]["gen"], g))
 
 
-def champion_of(entrants: list[dict], live: set[str]) -> str | None:
+def current_fitness(entrants: list[dict], scores: dict[str, dict]) -> dict[str, float]:
+    """Each entrant's fitness now: its latest score in v1 (a new era re-scores the live elites),
+    else the fitness it entered with."""
+    return {e["genome_id"]: scores[e["genome_id"]]["fitness"] if e["genome_id"] in scores else e["fitness"]
+            for e in entrants}
+
+
+def champion_of(entrants: list[dict], live: set[str], fitness: dict[str, float] | None = None) -> str | None:
     """The fittest live elite; ties go to the elder (insertion order)."""
     order = {e["genome_id"]: i for i, e in enumerate(entrants)}
-    fit = {e["genome_id"]: e["fitness"] for e in entrants}
+    fit = fitness or {e["genome_id"]: e["fitness"] for e in entrants}
     return max(live, key=lambda g: (fit[g], -order[g]), default=None)
+
+
+def ladder_json(members: list[dict], pairs: list[dict], era: int, cycle_window: int) -> dict:
+    """docs/DATA.md ladder.json: the members in joining order, and who beats whom.
+
+    matrix.winrate[i][j] is member i's share of the matches against member j
+    (a win 1, a tie 1/2), from the block each newcomer played against every
+    earlier member when it was promoted; null on the diagonal or if unplayed.
+    """
+    ids = [m["member_id"] for m in members]
+    index = {mid: k for k, mid in enumerate(ids)}
+    win: list[list[float | None]] = [[None] * len(ids) for _ in ids]
+    for p in pairs:
+        if p["a_id"] in index and p["b_id"] in index and p["a_id"] != p["b_id"]:
+            a, b = index[p["a_id"]], index[p["b_id"]]
+            share = (p["wins_a"] + 0.5 * p["draws"]) / p["n"]
+            win[a][b], win[b][a] = share, 1.0 - share
+    out = []
+    for m in members:
+        entry = {"id": m["member_id"], "kind": m["kind"], "rating": m["rating"], "since_era": m["era"]}
+        if m["kind"] != "scripted":
+            entry["promoted_at_gen"] = m["gen"]
+            entry["winrate_vs_previous"] = m["winrate_vs_previous"]
+        out.append(entry)
+    return {"era": era, "members": out, "matrix": {"ids": ids, "winrate": win}, "cycle_window": cycle_window}
 
 
 def export_run(
@@ -165,11 +197,20 @@ def export_run(
     live = set(occupants.values())
     last = gens[-1]
 
-    champion = champion_of(entrants, live)
+    # v1 runs have a ladder: the champion is its latest member (scripted-v1 until the
+    # first promotion) and ratings are filled in; v0 runs keep the fittest elite.
+    members = store.ladder_members(run_id)
+    scores = store.latest_scores(run_id)
+    fitness = current_fitness(entrants, scores)
+    rating = {gid: s["rating"] for gid, s in scores.items()}
+    best = champion_of(entrants, live, fitness)
+    champion = members[-1]["member_id"] if members else best
+    champion_rating = members[-1]["rating"] if members else None
 
-    # genomes the page can fetch: live elites, replay opponents (probes), the champion's ancestry
+    # genomes the page can fetch: live elites, replay opponents (probes), the champion's ancestry, the ladder
     lineage = ancestors(champion, by_id)
-    want = set(live) | set(lineage) | {p for p in json.loads(run["probe_ids_json"]) if p != SCRIPTED_ID}  # the scripted bot has no genome
+    want = (set(live) | set(lineage) | {p for p in json.loads(run["probe_ids_json"]) if p != SCRIPTED_ID}
+            | {m["member_id"] for m in members if m["kind"] != "scripted"})  # the scripted bot has no genome
     glen = run["genome_len"]
     for gid in sorted(want):
         data = store.params(gid)
@@ -190,8 +231,8 @@ def export_run(
     for cell, gid in sorted(occupants.items()):
         e = by_id[gid]
         cells.append({
-            "i": cell[0], "j": cell[1], "genome_id": gid, "fitness": e["fitness"], "rating": None,
-            "lit": e["fitness"] >= floor,
+            "i": cell[0], "j": cell[1], "genome_id": gid, "fitness": fitness[gid], "rating": rating.get(gid),
+            "lit": fitness[gid] >= floor,
             "bd": e["bd"], "gen": e["gen"], "era": e["era"], "margins": e["margins"], "desc": e["desc"],
             "replay": {"seed": _json_seed(e["replay_seed"]), "opponent_id": e["replay_opponent_id"],
                        "side": e["replay_side"], "final_hash": e["replay_final_hash"],
@@ -216,8 +257,8 @@ def export_run(
         "cells": cells,
         "stats": {"filled": last["filled"], "lit": sum(1 for c in cells if c["lit"]),
                   "beats_coach": coach_by_gen[last["gen"]],
-                  "qd_score": last["qd_score"], "champion_id": champion,
-                  "champion_rating": None, "matches_total": last["matches_total"],
+                  "qd_score": last["qd_score"], "champion_id": champion, "best_id": best,
+                  "champion_rating": champion_rating, "matches_total": last["matches_total"],
                   "matches_per_s": last["matches_total"] / elapsed if elapsed > 0 else 0.0,
                   "elapsed_s": elapsed},
     })
@@ -227,10 +268,18 @@ def export_run(
     for g in gens:
         carry = lit_by_gen.get(g["gen"], carry)
         lit_by_gen[g["gen"]] = carry
+
+    def champion_rating_at(gen: int) -> float | None:
+        """The rating of the champion standing at the end of `gen`: a step that only rises."""
+        held = [m["rating"] for m in members if m["gen"] <= gen]
+        return held[-1] if held else None
+
     _write_json(out / "curve.json", {"run_id": run_id, "points": thin([
         {"gen": g["gen"], "t": g["t_s"], "filled": g["filled"], "lit": lit_by_gen.get(g["gen"], 0),
-         "beats_coach": coach_by_gen[g["gen"]], "qd_score": g["qd_score"], "champion_rating": None, "best_fitness": g["best_fitness"],
-         "era": g["era"], "matches_total": g["matches_total"]} for g in gens])})
+         "beats_coach": coach_by_gen[g["gen"]], "qd_score": g["qd_score"],
+         "champion_rating": champion_rating_at(g["gen"]), "best_fitness": g["best_fitness"],
+         "era": g["era"], "matches_total": g["matches_total"]}
+        for g in gens])})
 
     pos = layout(entrants)
     nodes = []
@@ -239,7 +288,7 @@ def export_run(
         x, y = pos[gid]
         c = cell_of.get(gid)
         nodes.append({"id": gid, "parents": e["parents"], "op": e["op"], "gen": e["gen"], "era": e["era"],
-                      "cell": list(c) if c else None, "fitness": e["fitness"], "rating": None,
+                      "cell": list(c) if c else None, "fitness": fitness[gid], "rating": rating.get(gid),
                       "alive": gid in live, "champion": gid == champion, "x": x, "y": y})
 
     def tree(sel: list[dict]) -> dict:
@@ -252,6 +301,11 @@ def export_run(
     _write_json(out / "tree.json", tree([n for n in nodes if n["id"] in keep]))
     if write_full:
         _write_json(out / "tree-full.json", tree(nodes))
+
+    if members:
+        ladder_cfg = cfg.get("ladder", {})
+        _write_json(out / "ladder.json", ladder_json(members, store.ladder_pairs(run_id, "member"), last["era"],
+                                                     int(ladder_cfg.get("cycle_window", 5))))
 
     _update_index(root, run_id, cfg["slug"], run["started_at"], last["gen"])
     return out

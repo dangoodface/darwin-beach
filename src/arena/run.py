@@ -16,15 +16,17 @@ from typing import Protocol
 
 import numpy as np
 
-from .archive import Archive
+from .archive import NEW, Archive
 from .config import Config, load_config
 from .evaluate import Evaluator
 from .genome import Genome, make_genome, random_params
+from .ladder import Challenge, Ladder
 from .optim import EvalResult, MapElites
 from .workers import Workers
 
 # Spawn order of the root SeedSequence. Appending is safe; reordering changes every run.
-STREAM_PROBES, STREAM_OPTIM, STREAM_SEEDS = 0, 1, 2
+STREAM_PROBES, STREAM_OPTIM, STREAM_SEEDS, STREAM_LADDER = 0, 1, 2, 3
+RESCORE_BATCH = 256  # elites per evaluation when an era re-scores the archive; fits the kernel table
 
 
 @dataclass
@@ -39,6 +41,7 @@ class RunContext:
     archive: Archive
     started_at: datetime
     started_mono: float = field(default_factory=time.monotonic)
+    ladder: Ladder | None = None  # v1
 
 
 @dataclass
@@ -49,6 +52,10 @@ class GenerationInfo:
     evicted: list[str | None]  # genome id displaced by each "replaced", else None
     matches_total: int
     elapsed_s: float
+    era: int = 0  # the era this generation's candidates were evaluated in
+    matches_per_candidate: int = 0  # matches each of this generation's candidates played
+    challenge: Challenge | None = None  # v1: the promotion check played after this generation, if any
+    rescored: list[EvalResult] | None = None  # v1: the live elites re-evaluated when the check promoted
 
 
 class Observer(Protocol):
@@ -61,6 +68,31 @@ def make_run_id(slug: str, now: datetime) -> str:
     return f"{now.strftime('%Y%m%dT%H%M%SZ')}-{slug}"
 
 
+def rescore(archive: Archive, evaluator: Evaluator) -> tuple[Archive, list[EvalResult]]:
+    """A new era: every live elite is re-evaluated against the grown ladder and
+    re-inserted into a fresh archive; only fitness and rating change.
+
+    Descriptors come from the fixed probe set, the same matches as before, so
+    each elite is placed by the descriptors it already has. The fresh ones must
+    agree; the kernel repeats them exactly, while FakeSimulator's matrix
+    product over a bigger table can move the last bit, which must not move a cell.
+    """
+    elites = archive.elites()
+    results: list[EvalResult] = []
+    for i in range(0, len(elites), RESCORE_BATCH):
+        results += evaluator.evaluate([e.genome for e in elites[i : i + RESCORE_BATCH]])
+    fresh = Archive(archive.bounds, archive.resolution, archive.qd_offset)
+    placed: list[EvalResult] = []
+    for e, r in zip(elites, results):
+        if not np.allclose(r.bd, e.bd, rtol=1e-9, atol=1e-12):
+            raise RuntimeError(f"re-scoring changed {r.genome.id}'s descriptors: they must not depend on the ladder")
+        r = r._replace(bd=e.bd)
+        if fresh.add(r.genome, r.bd, r.fitness) != NEW:
+            raise RuntimeError(f"re-scoring put two elites in cell {fresh.cell_of(r.bd)}")
+        placed.append(r)
+    return fresh, placed
+
+
 def run(
     cfg: Config,
     observers: list[Observer] | tuple[()] = (),
@@ -69,13 +101,22 @@ def run(
     now: datetime | None = None,
 ) -> RunContext:
     root = np.random.SeedSequence(cfg.seed)
-    probe_ss, optim_ss, seed_ss = root.spawn(3)
+    probe_ss, optim_ss, seed_ss, ladder_ss = root.spawn(4)
 
     with Workers(cfg.sim_kind, cfg.kernel_path, cfg.workers, cfg.jobs_per_task) as workers:
-        kernel_sha, kernel_version, genome_len, scripted_slot = workers.simulator_info
-        if cfg.scripted_probe and scripted_slot is None:
+        kernel_sha, kernel_version, genome_len, sim_scripted = workers.simulator_info
+        if cfg.scripted_probe and sim_scripted is None:
             raise ValueError("eval.scripted_probe is set but the simulator has no scripted bot")
-        scripted_slot = scripted_slot if cfg.scripted_probe else None
+        scripted_slot = sim_scripted if cfg.scripted_probe else None
+
+        ladder = None
+        if cfg.ladder_enabled:
+            if sim_scripted is None:
+                raise ValueError("ladder.enabled needs the simulator's scripted bot as its anchor")
+            ladder_seeds = cfg.ladder_seed_list or tuple(
+                int(s) for s in ladder_ss.generate_state(cfg.ladder_seeds, dtype=np.uint64)
+            )
+            ladder = Ladder(sim_scripted, ladder_seeds, cfg.ladder_threshold, cfg.ladder_cycle_window)
 
         probe_rng = np.random.default_rng(probe_ss)
         probes = [
@@ -86,16 +127,18 @@ def run(
             int(s) for s in seed_ss.generate_state(cfg.seeds_per_probe, dtype=np.uint64)
         )
         resolved = Config.from_dict({**cfg.to_dict(), "seed": cfg.seed, "eval": {
-            "scripted_probe": cfg.scripted_probe, "probe_count": cfg.probe_count, "seeds_per_probe": len(seeds), "eval_seeds": list(seeds)}})
+            "scripted_probe": cfg.scripted_probe, "probe_count": cfg.probe_count, "seeds_per_probe": len(seeds), "eval_seeds": list(seeds)},
+            "ladder": {**cfg.to_dict()["ladder"], "seed_list": list(ladder.seeds) if ladder else []}})
 
         archive = Archive(cfg.bounds, cfg.resolution, cfg.qd_offset)
         opt = MapElites(archive, np.random.default_rng(optim_ss), kernel_sha, genome_len,
                         cfg.batch_size, cfg.init_size, cfg.sigma, cfg.crossover_frac)
-        evaluator = Evaluator(workers, probes, scripted_slot, seeds, cfg.indices, cfg.max_ticks)
+        evaluator = Evaluator(workers, probes, scripted_slot, seeds, cfg.indices, cfg.max_ticks, ladder)
 
         started = now or datetime.now(timezone.utc)
         ctx = RunContext(make_run_id(cfg.slug, started), resolved, kernel_sha, kernel_version,
-                         genome_len, probes, [o for o, _ in evaluator.opponents], archive, started)
+                         genome_len, probes, [o for o, _ in evaluator.opponents], archive, started,
+                         ladder=ladder)
         for o in observers:
             o.on_start(ctx)
 
@@ -104,6 +147,8 @@ def run(
         while (generations is None or gen < generations) and (
             max_seconds is None or time.monotonic() - ctx.started_mono < max_seconds
         ):
+            era = ladder.era if ladder else 0
+            per_candidate = evaluator.matches_per_candidate
             cands = opt.ask()
             results = evaluator.evaluate(cands)
             outcomes = []
@@ -114,8 +159,15 @@ def run(
                 resident = archive.get(cell)
                 outcomes.extend(opt.tell([r]))
                 evicted.append(resident.genome.id if resident and outcomes[-1] == "replaced" else None)
-            info = GenerationInfo(gen, results, outcomes, evicted, evaluator.matches_total,
-                                  time.monotonic() - ctx.started_mono)
+            challenge = rescored = None
+            if ladder is not None and (gen + 1) % cfg.ladder_check_every == 0 and archive.best() is not None:
+                challenge = ladder.challenge(workers, archive.best().genome, gen, cfg.max_ticks)
+                if challenge is not None and challenge.promoted:
+                    archive, rescored = rescore(archive, evaluator)
+                    opt.archive = ctx.archive = archive
+            matches = evaluator.matches_total + (ladder.matches_total if ladder else 0)
+            info = GenerationInfo(gen, results, outcomes, evicted, matches,
+                                  time.monotonic() - ctx.started_mono, era, per_candidate, challenge, rescored)
             for o in observers:
                 o.on_generation(ctx, info)
             gen += 1

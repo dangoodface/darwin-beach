@@ -1,0 +1,48 @@
+# The v1 run: the same map, scored against the honest ladder. scripted-v1
+# anchors the ratings at 1000; every 10 generations the fittest elite challenges
+# the champion over 50 seeds on both sides and is promoted, opening a new era,
+# when it wins at least 55 per cent and out-rates the champion. Fitness is the
+# score margin against the ladder's members; the descriptors still come from
+# the fixed probe set (scripted-v1 plus three frozen generation-zero genomes),
+# so a cell never moves when the ladder grows.
+slug = "slime-v1"
+seed = 20261027
+
+[sim]
+kind = "kernel"
+kernel_path = "artifacts/kernel/5487b2a61f66880a4bd468957b6f662cb0f5afd05ab8ae7ac6736a81b025674a.wasm"
+max_ticks = 3000
+
+[grid]
+descriptors = ["court_position", "airtime"]
+indices = [0, 1]             # positions in the ABI descriptor block
+bounds = [[0.0, 1.0], [0.0, 1.0]]
+resolution = [20, 20]
+qd_offset = 5.0
+lit_floor = 0.0              # a cell lights on the page once its elite's fitness (margin against the rivals) reaches this              # fitness is a margin of about -5..5; this keeps QD-score monotone
+
+[optim]
+batch_size = 64              # candidates per generation
+init_size = 100              # random genomes until this many cells are filled
+sigma = 0.1
+crossover_frac = 0.5
+
+[workers]
+count = 8                    # 8 cores: 8 workers give 97% of 15 and leave the rest to the loop (make bench, 26 October 2026)
+jobs_per_task = 128          # at most the kernel's batch_capacity (256)
+
+[eval]
+probe_count = 3              # frozen generation-zero genomes after scripted-v1
+seeds_per_probe = 4          # each seed is played on both sides
+scripted_probe = true
+
+[export]
+every_s = 60
+tree_full_every_s = 3600
+
+[ladder]
+enabled = true
+check_every = 10             # generations between promotion checks
+seeds = 50                   # each played on both sides: 100 matches per pairing
+threshold = 0.55             # head-to-head share a challenger must win, ties counting half
+cycle_window = 5             # a new champion's results against this many earlier members are the cycle check
