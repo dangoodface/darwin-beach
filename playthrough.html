@@ -2474,31 +2474,33 @@
   ],
   "battle": {
     "boss": "THE NIGHT SHIFT",
-    "flavor": "Daniel handed the night to the crew: five long runs, each reviewed and re-decided, with the coach as the thing to beat. Run 2 is the control: same rules as run 1, fresh population, so we learn how much of run 1 was luck. Meanwhile a second species learns by reinforcement on the graphics card.",
-    "hp": 80,
-    "status": "RUN 2 LIVE · 00:59 TO 02:59 · RL TRAINER ON THE GPU",
+    "flavor": "Daniel handed the night to the crew: five long runs, each reviewed and re-decided, with the coach as the thing to beat. Run 2, the control, showed the best bots now play the coach even on fresh serves, but nobody beats it. Run 3 scores every bot on twice as many coach matches. A second species learns by reinforcement on the graphics card, now with hints that fade out.",
+    "hp": 60,
+    "status": "RUN 3 LIVE · 03:00 TO 05:00 · SECOND RL TRY ON THE GPU",
     "stats": [
       [
-        "RUN 1, FINAL",
-        "25,578 rounds · 52.4M matches"
+        "RUN 2, FINAL",
+        "48,848 rounds · 100.0M matches"
       ],
       [
-        "STYLES LIT, RUN 1",
-        "368 / 400"
+        "STYLES LIT, RUN 2",
+        "321 / 400"
       ],
       [
-        "BEATS THE COACH",
-        "nobody yet"
+        "VS THE COACH, FRESH SERVES",
+        "best three: 8 wins of 16"
       ],
       [
         "RL BOT VS COACH",
-        "0 to 5, 40 updates in"
+        "0 to 5 after first try; second try from 03:04"
       ]
     ],
     "log": [
-      "> Run 1 verified: all 400 stored matches re-play to the same hash.",
-      "> Run 2, the control, started 00:59 with a fresh population.",
-      "> The RL species trains on the GPU under a two-thread cap. Still losing 0 to 5."
+      "> Run 2 verified: all 400 stored matches re-play to the same hash.",
+      "> 21 bots \"beat the coach\" on their test matches; on 16 fresh serves none does. The best three draw.",
+      "> Run 3 started 03:00: twice the coach matches per bot, every style measure saved.",
+      "> First RL try ended 0 to 5. Second try started 03:04 with fading hints and a softened coach.",
+      "> Smarter breeding (CMA-ME) is built and merged; it plays run 4 against run 3 on the same seed."
     ]
   },
   "skills": [
@@ -2613,6 +2615,10 @@
     }
   ],
   "events": [
+    {
+      "t": "27 OCT",
+      "text": "<b>Run 2, the control.</b> Two hours, 48,848 rounds, 100 million matches, 321 of 400 styles lit. Twenty-one bots beat the coach on the matches they were graded on; on fresh serves none of them does, though the best three play it even, where run 1's champion lost every fresh match. Lesson kept: grades on fixed serves flatter the graded. Run 3 doubles the coach matches per bot. The first reinforcement-learning try ended 0 to 5; a second runs with hints that fade out. Smarter breeding is built for run 4."
+    },
     {
       "t": "27 OCT",
       "text": "<b>First Light, cleared.</b> An hour of evolution on the real court: 25,578 rounds, 52.4 million matches, every style found a bot and 368 of 400 learned to hold their own against the practice rivals. Every stored match re-played on the game file to the same result. Nobody beat the coach on average. Next: a two-hour control run with a fresh population, to learn how much of this was luck."

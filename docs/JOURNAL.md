@@ -71,3 +71,54 @@ Decisions:
   lean: runs become two hours, sessions pause at clean commits, nobody
   polls. Run 2 (20261027T065906Z-night-r2, from 00:59) is the control with
   a fresh seed and the richer exports.
+
+## Tick 2, 03:05: run 2 is in, the coach is even, run 3 is live
+
+Run 2 final (20261027T065906Z-night-r2, two hours from 00:59): 48,848
+generations, 100.0 million matches at 13,894 a second, 400 of 400 cells with
+a bot (all by generation 88, 13 seconds), 321 lit, QD-score 2,260, best
+fitness +2.78 at cell [14, 16], born generation 40,389; all 400 stored
+matches re-played to the same hash. At the one-hour mark, where run 1
+ended: 278 lit and 13 elites beating the coach on their evaluation matches,
+against run 1's 368 lit and none. Lit and QD-score do not compare across
+runs, because each run draws its own three random sparring partners; the
+coach is the one yardstick every run shares.
+
+The control's lesson is about the coach. Run 2 ended with 21 elites that
+beat the coach on average over their 8 evaluation matches, the champion 8
+of 8. Played on 16 fresh serves each (8 new seeds, both sides), none of the
+21 wins more than 8: three draw 8 to 8 with a small positive margin and the
+champion wins 7. So "beats the coach: yes" in the summary is selection on
+the evaluation seeds, not a coach-beater. What is real: the best of run 2
+play the coach even, where run 1's champion lost all 16 fresh matches. Run 3
+scores every candidate on 16 coach matches instead of 8, which shrinks the
+bias but cannot remove it, so a fresh-seed check is now part of every tick,
+and the page should say "beats the coach" only about fresh serves (a bid for
+tick 3: show both figures). The same caution applies to the ladder's
+promotion seeds in run 5.
+
+Run 3 (20261027T085957Z-night-r3) started at 02:59:57: two hours, seed
+20261029, eight seeds per probe, all eight descriptors exported.
+
+The RL species. ppo-1 ended at 02:50 after 13,969 updates and 164.5 million
+ticks, still losing 0 to 5 (half a point a match). Sonnet's diagnosis: even
+the weakest archive elite is far above a random policy, so a curriculum of
+elites would not help; the wall is the sparse reward. The fix is committed
+on species-ppo (8034e53): potential-based shaping (get under the ball, then
+get it over the net, a small bonus for contact) and a coach that drops half
+its actions, both fading to zero over the first 60 per cent of the run (72
+minutes), then the plain win-or-lose game. funsies and Fable agreed to one
+more two-hour run: ppo-2 started at 03:04:37. It earns a place on the page
+only with a win rate above zero against the real coach over 64 matches,
+with shaping off for the last 30 minutes. At 25 updates it already takes
+2.5 points a match from the softened coach, which says nothing yet about
+the real one.
+
+Run 4. Opus's CMA-ME is merged (PR #2): four CMA-ES emitters through pyribs,
+16 proposals each a generation, on the same archive, told what each
+proposal did to it (new cell, improvement, rejection). Plain MAP-Elites runs
+are bit-identical to before. On the pretend game over 60 generations
+MAP-Elites filled 215 cells to CMA-ME's 206, so no prior either way. Run 4
+shares run 3's seed, so rivals, evaluation seeds and the first random
+generations match and only the optimiser differs; compare at equal
+generation counts, since CMA-ME adds about 75 ms of Python a generation.
