@@ -4,6 +4,12 @@ Nothing is ever updated or deleted (triggers refuse it), every row carries the
 era and the kernel sha it was made under, and only archive entrants are stored
 with parents. Whether a genome is still alive is derived from archive_events.
 Seeds and hashes are u64, so they are stored as text (SQLite integers are signed).
+
+v1 adds the ladder: its members with their frozen ratings, every block of
+ladder matches (challenges, and each new champion against every member), and
+a score per genome per era, because a promotion re-scores the live elites
+under the grown ladder. A re-score is also an archive event (same cell, same
+genome, new fitness), so the occupancy and the lit count replay as before.
 """
 
 from __future__ import annotations
@@ -15,7 +21,7 @@ from pathlib import Path
 
 from .run import GenerationInfo, RunContext
 
-ERA = 0  # eras arrive with promotion in v1
+ERA = 0  # the era a run starts in; promotions open the next ones (v1)
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS runs (
@@ -41,8 +47,18 @@ CREATE TABLE IF NOT EXISTS generations (
   run_id TEXT, era INTEGER, kernel_sha TEXT, gen INTEGER, t_s REAL, filled INTEGER,
   qd_score REAL, best_fitness REAL, champion_id TEXT, matches_total INTEGER,
   PRIMARY KEY (run_id, gen));
+CREATE TABLE IF NOT EXISTS ladder_members (
+  run_id TEXT, era INTEGER, kernel_sha TEXT, gen INTEGER, member_id TEXT, kind TEXT, rating REAL,
+  winrate_vs_previous REAL, PRIMARY KEY (run_id, member_id));
+CREATE TABLE IF NOT EXISTS ladder_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, era INTEGER, kernel_sha TEXT, gen INTEGER,
+  purpose TEXT, a_id TEXT, b_id TEXT, n INTEGER, wins_a INTEGER, draws INTEGER, wins_b INTEGER);
+CREATE TABLE IF NOT EXISTS scores (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, era INTEGER, kernel_sha TEXT, gen INTEGER,
+  genome_id TEXT, fitness REAL, rating REAL, reason TEXT);
 """
-TABLES = ("runs", "genomes", "genome_params", "evaluations", "archive_events", "promotions", "generations")
+TABLES = ("runs", "genomes", "genome_params", "evaluations", "archive_events", "promotions", "generations",
+          "ladder_members", "ladder_results", "scores")
 
 
 def data_root() -> Path:
@@ -86,41 +102,85 @@ class Store:
                  ctx.kernel_sha, ctx.kernel_version, ctx.genome_len, json.dumps(cfg.to_dict()),
                  json.dumps(ctx.probe_ids), json.dumps([str(s) for s in cfg.eval_seeds])))
             for p in ctx.probes:
-                self._genome(ctx, p, "probe")
+                self._genome(ctx, p, "probe", ERA)
+            if ctx.ladder is not None:
+                for m in ctx.ladder.members:  # scripted-v1, the anchor
+                    self.db.execute("INSERT INTO ladder_members VALUES (?,?,?,?,?,?,?,?)",
+                                    (ctx.run_id, m.since_era, ctx.kernel_sha, -1, m.id, m.kind, m.rating, None))
 
-    def _genome(self, ctx: RunContext, g, kind: str) -> None:
+    def _genome(self, ctx: RunContext, g, kind: str, era: int) -> None:
         self.db.execute("INSERT OR IGNORE INTO genomes VALUES (?,?,?,?,?,?,?,?)",
-                        (g.id, ctx.run_id, ERA, ctx.kernel_sha, g.gen, kind, g.op, json.dumps(list(g.parents))))
+                        (g.id, ctx.run_id, era, ctx.kernel_sha, g.gen, kind, g.op, json.dumps(list(g.parents))))
         self.db.execute("INSERT OR IGNORE INTO genome_params VALUES (?,?)", (g.id, g.params.astype("<f4").tobytes()))
 
     def record_generation(self, ctx: RunContext, info: GenerationInfo) -> None:
         arch = ctx.archive
-        n_matches = len(ctx.cfg.eval_seeds) * len(ctx.probe_ids) * 2
+        era = info.era
+        n_matches = info.matches_per_candidate or len(ctx.cfg.eval_seeds) * len(ctx.probe_ids) * 2
         with self.db:
             for r, outcome, evicted in zip(info.results, info.outcomes, info.evicted):
                 if outcome == "rejected":
                     continue
                 g = r.genome
-                self._genome(ctx, g, "entrant")
+                self._genome(ctx, g, "entrant", era)
                 rp = r.replay
                 self.db.execute(
                     "INSERT INTO evaluations (run_id, era, kernel_sha, gen, genome_id, fitness, bd_json, n_matches,"
                     " replay_seed, replay_opponent_id, replay_side, replay_final_hash, replay_ticks,"
                     " replay_points_for, replay_points_against) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    (ctx.run_id, ERA, ctx.kernel_sha, info.generation, g.id, r.fitness, json.dumps(list(r.bd)),
+                    (ctx.run_id, era, ctx.kernel_sha, info.generation, g.id, r.fitness, json.dumps(list(r.bd)),
                      n_matches, *((str(rp.seed), rp.opponent_id, rp.side, f"0x{rp.final_hash:016x}",
                                    rp.ticks, rp.points[0], rp.points[1]) if rp else (None,) * 7)))
                 self.db.execute(
                     "INSERT INTO archive_events (run_id, era, kernel_sha, gen, event, cell_json, genome_id,"
                     " evicted_id, fitness) VALUES (?,?,?,?,?,?,?,?,?)",
-                    (ctx.run_id, ERA, ctx.kernel_sha, info.generation, outcome,
+                    (ctx.run_id, era, ctx.kernel_sha, info.generation, outcome,
                      json.dumps(list(arch.cell_of(r.bd))), g.id, evicted, r.fitness))
+                if r.rating is not None:
+                    self._score(ctx, era, info.generation, r, "eval")
+            if info.challenge is not None:
+                era = self._record_challenge(ctx, info)
             best = arch.best()
             self.db.execute(
                 "INSERT INTO generations VALUES (?,?,?,?,?,?,?,?,?,?)",
-                (ctx.run_id, ERA, ctx.kernel_sha, info.generation, info.elapsed_s, arch.filled(),
+                (ctx.run_id, era, ctx.kernel_sha, info.generation, info.elapsed_s, arch.filled(),
                  arch.qd_score(), best.fitness if best else None, best.genome.id if best else None,
                  info.matches_total))
+
+    def _score(self, ctx: RunContext, era: int, gen: int, r, reason: str) -> None:
+        self.db.execute("INSERT INTO scores (run_id, era, kernel_sha, gen, genome_id, fitness, rating, reason)"
+                        " VALUES (?,?,?,?,?,?,?,?)", (ctx.run_id, era, ctx.kernel_sha, gen, r.genome.id,
+                                                      r.fitness, r.rating, reason))
+
+    def _pair(self, ctx: RunContext, era: int, gen: int, purpose: str, p) -> None:
+        self.db.execute("INSERT INTO ladder_results (run_id, era, kernel_sha, gen, purpose, a_id, b_id, n, wins_a,"
+                        " draws, wins_b) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (ctx.run_id, era, ctx.kernel_sha, gen, purpose, p.a, p.b, p.n, p.wins_a, p.draws, p.wins_b))
+
+    def _record_challenge(self, ctx: RunContext, info: GenerationInfo) -> int:
+        """Writes a promotion check; returns the era the generation ends in."""
+        c, gen = info.challenge, info.generation
+        self._pair(ctx, c.era, gen, "challenge", c.headtohead)
+        if not c.promoted:
+            return info.era
+        m = c.member
+        self.db.execute("INSERT INTO promotions (run_id, era, kernel_sha, gen, genome_id, winrate_vs_previous)"
+                        " VALUES (?,?,?,?,?,?)", (ctx.run_id, m.since_era, ctx.kernel_sha, gen, m.id,
+                                                  m.winrate_vs_previous))
+        self.db.execute("INSERT INTO ladder_members VALUES (?,?,?,?,?,?,?,?)",
+                        (ctx.run_id, m.since_era, ctx.kernel_sha, gen, m.id, m.kind, m.rating,
+                         m.winrate_vs_previous))
+        for p in c.vs_members:  # the new champion against every earlier member: its row of the matrix
+            self._pair(ctx, m.since_era, gen, "member", p)
+        arch = ctx.archive  # already the fresh archive of the new era
+        for r in info.rescored or []:
+            self._score(ctx, m.since_era, gen, r, "rescore")
+            self.db.execute(
+                "INSERT INTO archive_events (run_id, era, kernel_sha, gen, event, cell_json, genome_id,"
+                " evicted_id, fitness) VALUES (?,?,?,?,?,?,?,?,?)",
+                (ctx.run_id, m.since_era, ctx.kernel_sha, gen, "rescore", json.dumps(list(arch.cell_of(r.bd))),
+                 r.genome.id, None, r.fitness))
+        return m.since_era
 
     # reads (the exporter works from these, so it can run without the loop) ----
 
@@ -173,6 +233,24 @@ class Store:
         for gid, cell_json in cur.fetchall():
             out[gid] = tuple(json.loads(cell_json))
         return out
+
+    def ladder_members(self, run_id: str) -> list[dict]:
+        """The ladder in joining order, scripted-v1 first; empty for a v0 run."""
+        cur = self.db.execute("SELECT * FROM ladder_members WHERE run_id=? ORDER BY era", (run_id,))
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def ladder_pairs(self, run_id: str, purpose: str) -> list[dict]:
+        cur = self.db.execute("SELECT * FROM ladder_results WHERE run_id=? AND purpose=? ORDER BY id", (run_id, purpose))
+        cols = [c[0] for c in cur.description]
+        return [dict(zip(cols, row)) for row in cur.fetchall()]
+
+    def latest_scores(self, run_id: str) -> dict[str, dict]:
+        """Each genome's most recent score (fitness and rating in the era it was scored)."""
+        cur = self.db.execute("SELECT genome_id, era, gen, fitness, rating FROM scores WHERE run_id=? ORDER BY id",
+                              (run_id,))
+        return {gid: {"era": era, "gen": gen, "fitness": fit, "rating": rating}
+                for gid, era, gen, fit, rating in cur.fetchall()}
 
     def params(self, genome_id: str) -> bytes:
         return self.db.execute("SELECT params FROM genome_params WHERE genome_id=?", (genome_id,)).fetchone()[0]

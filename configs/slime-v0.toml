@@ -35,3 +35,6 @@ scripted_probe = true
 [export]
 every_s = 60
 tree_full_every_s = 3600
+
+[ladder]
+enabled = false              # v0 scores against the fixed probe set; configs/slime-v1.toml turns the ladder on

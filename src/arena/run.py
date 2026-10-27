@@ -53,6 +53,7 @@ class GenerationInfo:
     matches_total: int
     elapsed_s: float
     era: int = 0  # the era this generation's candidates were evaluated in
+    matches_per_candidate: int = 0  # matches each of this generation's candidates played
     challenge: Challenge | None = None  # v1: the promotion check played after this generation, if any
     rescored: list[EvalResult] | None = None  # v1: the live elites re-evaluated when the check promoted
 
@@ -69,17 +70,27 @@ def make_run_id(slug: str, now: datetime) -> str:
 
 def rescore(archive: Archive, evaluator: Evaluator) -> tuple[Archive, list[EvalResult]]:
     """A new era: every live elite is re-evaluated against the grown ladder and
-    re-inserted into a fresh archive. Descriptors come from the fixed probe set,
-    so each elite lands in its own cell again; only fitness and rating change."""
+    re-inserted into a fresh archive; only fitness and rating change.
+
+    Descriptors come from the fixed probe set, the same matches as before, so
+    each elite is placed by the descriptors it already has. The fresh ones must
+    agree; the kernel repeats them exactly, while FakeSimulator's matrix
+    product over a bigger table can move the last bit, which must not move a cell.
+    """
     elites = archive.elites()
     results: list[EvalResult] = []
     for i in range(0, len(elites), RESCORE_BATCH):
         results += evaluator.evaluate([e.genome for e in elites[i : i + RESCORE_BATCH]])
     fresh = Archive(archive.bounds, archive.resolution, archive.qd_offset)
+    placed: list[EvalResult] = []
     for e, r in zip(elites, results):
-        if fresh.add(r.genome, r.bd, r.fitness) != NEW or fresh.cell_of(r.bd) != archive.cell_of(e.bd):
-            raise RuntimeError(f"re-scoring moved {r.genome.id}: descriptors must not depend on the ladder")
-    return fresh, results
+        if not np.allclose(r.bd, e.bd, rtol=1e-9, atol=1e-12):
+            raise RuntimeError(f"re-scoring changed {r.genome.id}'s descriptors: they must not depend on the ladder")
+        r = r._replace(bd=e.bd)
+        if fresh.add(r.genome, r.bd, r.fitness) != NEW:
+            raise RuntimeError(f"re-scoring put two elites in cell {fresh.cell_of(r.bd)}")
+        placed.append(r)
+    return fresh, placed
 
 
 def run(
@@ -137,6 +148,7 @@ def run(
             max_seconds is None or time.monotonic() - ctx.started_mono < max_seconds
         ):
             era = ladder.era if ladder else 0
+            per_candidate = evaluator.matches_per_candidate
             cands = opt.ask()
             results = evaluator.evaluate(cands)
             outcomes = []
@@ -155,7 +167,7 @@ def run(
                     opt.archive = ctx.archive = archive
             matches = evaluator.matches_total + (ladder.matches_total if ladder else 0)
             info = GenerationInfo(gen, results, outcomes, evicted, matches,
-                                  time.monotonic() - ctx.started_mono, era, challenge, rescored)
+                                  time.monotonic() - ctx.started_mono, era, per_candidate, challenge, rescored)
             for o in observers:
                 o.on_generation(ctx, info)
             gen += 1
