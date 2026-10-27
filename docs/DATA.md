@@ -122,6 +122,18 @@ entrants; `tree-full.json` holds everything for a "load all" button.
 (`export.tree_full_every_s`, default 3600), so for the first hour of a run
 it does not exist: the "load all" button handles a 404 by saying so.
 
+## v1 fields (the ladder, decided 27 October 2026)
+
+When `ladder.enabled` is on: `stats.champion_id` is the ladder's champion
+(`scripted-v1` in era 0, so the page highlights no lineage until the first
+promotion) and `stats.best_id` is the fittest live elite; both exist in v0
+files too, equal to each other. `cells[].rating` and `stats.champion_rating`
+are Elo against the frozen members; `curve.json` points carry
+`champion_rating` (a step that only rises) and `era`; `tree.json` nodes carry
+`rating`. Fitness is comparable only within an era, so with the ladder on the
+page colours by rating. `genomes/` includes every member's `.bin`, so
+champions can be replayed and played against.
+
 ## ladder.json (v1)
 
 ```json
@@ -129,8 +141,13 @@ it does not exist: the "load all" button handles a 404 by saying so.
   {"id": "scripted-v1", "kind": "scripted", "rating": 1000, "since_era": 0},
   {"id": "…", "kind": "champion", "rating": 1150, "since_era": 1,
    "promoted_at_gen": 240, "winrate_vs_previous": 0.58}
-]}
+ ],
+ "matrix": {"ids": ["scripted-v1", "…"], "winrate": [[null, 0.42], [0.58, null]]}}
 ```
+
+`matrix.winrate[r][c]` is how often row `r` beat column `c` over the
+promotion and rating matches, `null` where they never played. The page draws
+it as the who-beats-whom table and flags cycles.
 
 ## genomes/<id>.bin
 
