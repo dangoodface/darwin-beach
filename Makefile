@@ -9,6 +9,7 @@ help:
 	@echo "make practice  practice run on the pretend game (200 generations)"
 	@echo "make upload    dry-run mirror of out/ into ~/.local/share/arena/mirror"
 	@echo "make verify    re-run every live cell's replay and compare hashes: make verify RUN=<run_id>"
+	@echo "make worker-test    the Worker's pure functions and handler (node --test, no account)"
 	@echo "make dev       the page (placeholder until web/ exists)"
 	@echo "make kernel    build the game file and say whether it matches one in artifacts/kernel/"
 	@echo "make parity    twin test: 1,000 matches in wasmtime and in Node, tick by tick"
@@ -51,3 +52,6 @@ parity: kernel
 bench: kernel
 	systemd-run --user --scope -q -p MemoryMax=4G -p CPUQuota=1400% \
 	  uv run python tools/bench.py
+
+worker-test:
+	node --test worker/test/*.test.mjs
