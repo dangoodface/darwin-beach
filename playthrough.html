@@ -95,40 +95,30 @@
   .stat .k { font-family: var(--f-display); font-size: 7px; letter-spacing: 1.5px; color: var(--dim); }
   .stat .v { font-family: var(--f-term); font-size: 22px; line-height: 1; color: var(--txt); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 
-  /* ---------- the machine ---------- */
+  /* ---------- the machine: one beach under construction ---------- */
   .m-count { display: flex; gap: 12px; flex-wrap: wrap; font-family: var(--f-display); font-size: 7px; letter-spacing: 1.5px; }
   .m-count .done { color: var(--slime); } .m-count .working { color: var(--sand); } .m-count .missing { color: var(--dim); }
-  .lanes { display: grid; gap: 8px; }
-  .lane { display: grid; grid-template-columns: 8ch 1fr; gap: 8px; align-items: start; }
-  .lane-name { font-family: var(--f-display); font-size: 7px; letter-spacing: 1.5px; color: var(--dim); padding-top: 10px; line-height: 1.5; }
-  .lane-parts { display: flex; flex-wrap: wrap; gap: 6px; align-items: stretch; min-width: 0; }
-  .part { flex: 1 1 108px; min-width: 0; border: 2px solid var(--line); background: var(--bg-2); padding: 8px; display: grid; gap: 4px; align-content: start; }
-  .part.done { border-color: var(--slime); }
-  .part.working { border-color: var(--sand); box-shadow: var(--glow-sand); }
-  .part.missing { border-style: dashed; opacity: .62; }
-  .p-name { font-family: var(--f-display); font-size: 8px; letter-spacing: 1px; line-height: 1.5; }
-  .part.done .p-name { color: var(--slime); } .part.working .p-name { color: var(--sand); }
-  .p-who { font-size: 11px; color: var(--muted); }
-  .p-tag { font-family: var(--f-display); font-size: 7px; letter-spacing: 1px; justify-self: start; padding: 3px 5px; }
-  .part.done .p-tag { background: var(--slime); color: var(--bg-0); }
-  .part.working .p-tag { background: var(--sand); color: var(--bg-0); animation: blink 1.6s steps(1) infinite; }
-  .part.missing .p-tag { border: 1px solid var(--dim); color: var(--dim); }
-  .p-plain { font-size: 11px; color: var(--muted); line-height: 1.4; }
-  .p-tech { color: var(--dim); }
-  .p-proof { font-size: 10px; color: var(--dim); }
-  .arrow { align-self: center; color: var(--dim); font-size: 14px; line-height: 1; flex: 0 0 auto; }
+  .beach { border: 2px solid var(--line-hard); background: var(--bg-0); min-width: 0; }
+  .beach svg { width: 100%; height: auto; display: block; }
+  .beach .obj { cursor: pointer; }
+  .beach .obj .box { fill: #000; fill-opacity: 0; stroke: none; }
+  .beach .obj:focus { outline: none; }
+  .beach .obj:focus-visible .box, .beach .obj.selected .box { stroke: var(--sand); stroke-width: 1.5; stroke-dasharray: 3 3; }
+  .beach .obj.working .art :not(text) { fill: none; stroke: var(--cyan); stroke-width: 1.5; stroke-dasharray: 4 3; stroke-opacity: .95; }
+  .beach .obj.missing .art :not(text) { fill: none; stroke: var(--dim); stroke-width: 1.2; stroke-dasharray: 2 3; }
+  .beach .obj.working .art text, .beach .obj.missing .art text { fill: var(--dim); }
+  .beach .obj .crane { display: none; }
+  .beach .obj.working .crane { display: block; }
+  .beach .lbl { fill: var(--muted); font-family: var(--f-term); }
+  .beach .obj.done .lbl { fill: var(--slime); } .beach .obj.working .lbl { fill: var(--sand); } .beach .obj.missing .lbl { fill: var(--dim); }
   .m-legend { display: flex; gap: 12px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
   .m-legend span::before { content: ""; display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; border: 2px solid var(--line); }
-  .m-legend .done::before { border-color: var(--slime); background: rgba(57,255,159,.25); }
-  .m-legend .working::before { border-color: var(--sand); background: rgba(255,201,60,.25); }
-  .m-legend .missing::before { border-style: dashed; }
-  @media (max-width: 520px) {
-    .lane { grid-template-columns: 1fr; gap: 4px; }
-    .lane-name { padding-top: 4px; }
-    .lane-parts { flex-direction: column; }
-    .arrow { transform: rotate(90deg); align-self: center; }
-    .part { flex-basis: auto; }
-  }
+  .m-legend .done::before { border-color: var(--slime); background: rgba(57,255,159,.35); }
+  .m-legend .working::before { border-color: var(--cyan); border-style: dashed; }
+  .m-legend .missing::before { border-color: var(--dim); border-style: dotted; }
+  .m-detail { border: 1px dashed var(--line); background: var(--bg-2); padding: 8px 10px; font-size: 12px; color: var(--muted); min-height: 3.4em; line-height: 1.5; }
+  .m-detail b { color: var(--txt); font-weight: 500; }
+  .m-detail .st-done { color: var(--slime); } .m-detail .st-working { color: var(--sand); } .m-detail .st-missing { color: var(--dim); }
 
   /* ---------- battle ---------- */
   .panel.battle { border-color: var(--sand); box-shadow: var(--glow-sand); }
@@ -224,7 +214,7 @@
   <header class="hero">
     <div class="pretitle">&lt;&lt; CAMPAIGN LOG &middot; SLIME <span style="color:var(--rival)">VS</span> SLIME &gt;&gt;</div>
     <h1>DARWIN <span class="vs">BEACH</span></h1>
-    <div class="subtitle">Where volleyball evolves. Slimes play, the winners have kids, and a map fills up with every way to play.</div>
+    <div class="subtitle">Where volleyball evolves. Nobody programs these slimes to play: the winners have kids, and a map fills up with every way to play.</div>
     <div class="save"><span class="blink" aria-hidden="true">&#9654;</span><span id="save-text"></span></div>
     <div class="court" aria-label="Attract mode animation of two slimes and a ball">
       <span class="tag">ATTRACT MODE &middot; SCRIPTED, NOT A TRAINED BOT</span>
@@ -246,8 +236,9 @@
 
     <section class="panel machine" aria-labelledby="mach-h">
       <h2 id="mach-h">THE MACHINE <span class="sub" id="m-count"></span></h2>
-      <div class="lanes" id="lanes"></div>
-      <div class="m-legend"><span class="done">done, test passed</span><span class="working">being built</span><span class="missing">not started</span></div>
+      <div class="beach" id="beach" aria-label="The beach under construction: ten things to build, drawn as done, being built or not started"></div>
+      <div class="m-detail" id="m-detail">Tap any object on the beach to read what it is, who builds it and how far along it is.</div>
+      <div class="m-legend"><span class="done">full colour: done, test passed</span><span class="working">blueprint and crane: being built</span><span class="missing">dotted: not started</span></div>
       <p class="lede" id="m-note"></p>
     </section>
 
@@ -286,7 +277,7 @@
 <!-- The crew edits this block as pieces pass their tests. Everything above renders from it. -->
 <script id="state" type="application/json">
 {
-  "save": "SAVE POINT · CHAPTER 1 · THE BEACH HAS A NAME · 26 OCT 2026",
+  "save": "SAVE POINT · CHAPTER 2 · FIRST RALLIES ON THE REAL COURT · 26 OCT 2026",
   "map": {
     "size": 20,
     "lit": [],
@@ -295,39 +286,7 @@
     "generation": 0
   },
   "machine": {
-    "note": "The game feeds evolution and the page. Uploads feed the page. A part is marked done only when its test passes.",
-    "lanes": [
-      {
-        "name": "RULES",
-        "parts": [
-          "rulebook"
-        ]
-      },
-      {
-        "name": "THE GAME",
-        "parts": [
-          "game",
-          "twin",
-          "speed"
-        ]
-      },
-      {
-        "name": "EVOLUTION",
-        "parts": [
-          "seeds",
-          "evolution",
-          "book",
-          "uploads"
-        ]
-      },
-      {
-        "name": "THE PAGE",
-        "parts": [
-          "page",
-          "play"
-        ]
-      }
-    ],
+    "note": "One beach, ten things to build. The game feeds evolution and the billboard; the antenna feeds the billboard. Nothing gets its colours until its test passes.",
     "parts": [
       {
         "id": "rulebook",
@@ -336,25 +295,28 @@
         "state": "done",
         "plain": "How the pieces talk to each other, written down before anyone builds.",
         "tech": "the ABI and the data contracts",
-        "proof": "docs/ABI.md and docs/DATA.md on main, 26 Oct"
+        "proof": "docs/ABI.md and docs/DATA.md on main, 26 Oct",
+        "label": "RULES"
       },
       {
         "id": "game",
         "name": "THE GAME",
         "who": "Opus",
-        "state": "working",
+        "state": "done",
         "plain": "Gravity, a ball, two slimes, a net and the score, packed into one small file.",
         "tech": "Rust compiled to WebAssembly",
-        "proof": ""
+        "proof": "23 Rust tests and 9 Python tests pass; a full match plays from start to finish, 26 Oct",
+        "label": "THE GAME"
       },
       {
         "id": "twin",
         "name": "TWIN TEST",
         "who": "Opus",
-        "state": "missing",
+        "state": "done",
         "plain": "The training computer and a browser play the same match and agree to the last decimal.",
         "tech": "parity, 1,000 seeded matches",
-        "proof": ""
+        "proof": "1,000 matches, 850,626 ticks, identical hashes in Python and in Node, zero NaN, 26 Oct",
+        "label": "TWIN TEST"
       },
       {
         "id": "speed",
@@ -363,7 +325,8 @@
         "state": "missing",
         "plain": "Many matches at once on all 16 cores.",
         "tech": "1,000 matches a second",
-        "proof": ""
+        "proof": "",
+        "label": "SPEED TEST"
       },
       {
         "id": "seeds",
@@ -372,7 +335,8 @@
         "state": "done",
         "plain": "A bot is 515 numbers. A child is a copy with small changes, or a mix of two parents.",
         "tech": "genomes, mutation, crossover",
-        "proof": "9 tests pass, 26 Oct"
+        "proof": "9 tests pass, 26 Oct",
+        "label": "NURSERY"
       },
       {
         "id": "evolution",
@@ -381,7 +345,8 @@
         "state": "done",
         "plain": "Keep the best bot of every style and breed from them, round after round.",
         "tech": "MAP-Elites and the worker pool",
-        "proof": "40 tests pass; a 200-round practice run on the pretend game found 244 of 400 styles, 26 Oct"
+        "proof": "40 tests pass; a 200-round practice run on the pretend game found 244 of 400 styles, 26 Oct",
+        "label": "EVOLUTION"
       },
       {
         "id": "book",
@@ -390,7 +355,8 @@
         "state": "done",
         "plain": "Every bot that ever held a cell, with its parents, never erased.",
         "tech": "an append-only SQLite store",
-        "proof": "40 tests pass; a 200-round practice run on the pretend game found 244 of 400 styles, 26 Oct"
+        "proof": "40 tests pass; a 200-round practice run on the pretend game found 244 of 400 styles, 26 Oct",
+        "label": "FAMILY BOOK"
       },
       {
         "id": "uploads",
@@ -399,7 +365,8 @@
         "state": "done",
         "plain": "Small files written every few minutes and sent to the cloud.",
         "tech": "the exporter and R2",
-        "proof": "40 tests pass; 408 files mirrored to a local folder, a second pass sent 0, 26 Oct"
+        "proof": "40 tests pass; 408 files mirrored to a local folder, a second pass sent 0, 26 Oct",
+        "label": "UPLOADS"
       },
       {
         "id": "page",
@@ -408,7 +375,8 @@
         "state": "working",
         "plain": "The glowing map, replays and the family tree, for anyone to visit.",
         "tech": "a static site on Cloudflare",
-        "proof": ""
+        "proof": "",
+        "label": "THE PAGE"
       },
       {
         "id": "play",
@@ -417,7 +385,8 @@
         "state": "missing",
         "plain": "Arrow keys against any bot on the map.",
         "tech": "the same game file, in the browser",
-        "proof": ""
+        "proof": "",
+        "label": "PLAY MODE"
       }
     ]
   },
@@ -555,25 +524,25 @@
           "name": "Build the Court",
           "desc": "Write the game itself: gravity, the ball, two slimes, the net, the score. Written in Rust, a fast language, and packed into one small file that runs anywhere.",
           "test": "a full match plays from start to finish",
-          "state": "current"
+          "state": "cleared"
         },
         {
           "name": "The Twin Test",
           "desc": "Play the same match on the training computer and in a web browser. Every position must match, down to the last decimal, or replays would lie.",
           "test": "1,000 matches identical on both sides",
-          "state": "locked"
+          "state": "cleared"
         },
         {
           "name": "Speed Run",
           "desc": "Evolution needs millions of games. Run many matches at once across the computer's 16 cores.",
           "test": "at least 1,000 matches a second",
-          "state": "locked"
+          "state": "current"
         },
         {
           "name": "Give Them Brains",
           "desc": "Each slime gets a tiny brain: 515 numbers that turn what it sees into move left, move right or jump. At first the numbers are random, so the slimes flail.",
           "test": "random-brain slimes play full matches",
-          "state": "locked"
+          "state": "cleared"
         },
         {
           "name": "The Family Book",
@@ -663,35 +632,32 @@
     }
   ],
   "battle": {
-    "boss": "BUILD THE COURT",
-    "flavor": "Before anything can evolve, there has to be a game. Gravity, a bouncing ball, two slimes, a net and a scoreboard, written from scratch and packed into one tiny file that runs on the training computer and in any browser.",
-    "hp": 100,
-    "status": "IN PROGRESS · OPUS IS BUILDING THE GAME",
+    "boss": "SPEED RUN",
+    "flavor": "Evolution is a numbers game: the more matches a second, the more generations a day, the smarter the bots by morning. The court is built and the twin test is won; now we find out how many matches this computer can play at once. The bar: a thousand full matches a second.",
+    "hp": 60,
+    "status": "IN PROGRESS · OPUS FREEZES THE SCRIPTED OPPONENT, THEN MEASURES",
     "stats": [
       [
-        "MATCHES PLAYED",
-        "0"
-      ],
-      [
-        "GAME FILE",
-        "not built yet"
-      ],
-      [
-        "MATCHES PER SECOND",
-        "n/a"
-      ],
-      [
         "TWIN TEST",
-        "0 / 1,000"
+        "1,000 / 1,000"
+      ],
+      [
+        "ONE CORE, SHORT MATCHES",
+        "about 2,500 a second"
+      ],
+      [
+        "15 CORES, FIRST TRY",
+        "30,720 matches in 3.7 s"
+      ],
+      [
+        "FULL MATCHES A SECOND",
+        "not measured yet"
       ]
     ],
     "log": [
-      "> The court is an empty lot.",
-      "> Rule one: no math that can come out slightly different on another computer.",
-      "> The plan is out. The work is split three ways.",
-      "> Opus builds the game. Sonnet builds evolution on a pretend game. Funsies builds the page.",
-      "> Sonnet's evolution machine runs on the practice court: 244 styles in 200 rounds of a pretend game.",
-      "> The beach has a name: Darwin Beach. It will live at play.thegoodface.ai/darwin-beach/."
+      "> The Parity Golem is down: the same match, tick for tick, on both machines.",
+      "> First rallies on the real court: 15 rounds of evolution, 30,720 matches, under four seconds.",
+      "> Next: freeze the scripted rival, keep the game file forever, then the proper speed test."
     ]
   },
   "skills": [
@@ -715,9 +681,9 @@
     },
     {
       "name": "SAME RESULT EVERYWHERE",
-      "lv": 0,
+      "lv": 2,
       "desc": "Why two computers can disagree on a tiny decimal, and how running the exact same file on both fixes it.",
-      "unlock": "Goes up when the twin test passes"
+      "unlock": "Went up when the twin test passed (26 Oct); up again when a replay verifies in a real browser"
     },
     {
       "name": "HONEST SCORES",
@@ -773,8 +739,8 @@
       "icon": "[ BC ]",
       "name": "Court Built",
       "desc": "The first full match plays out.",
-      "count": "0",
-      "locked": true
+      "count": "✓",
+      "locked": false
     },
     {
       "icon": "[ LT ]",
@@ -808,43 +774,43 @@
   "events": [
     {
       "t": "26 OCT",
-      "text": "<b>Address.</b> Darwin Beach will live at play.thegoodface.ai/darwin-beach/, next to the other games, as its own small server. Funsies wires the door."
+      "text": "<b>First rallies on the real court.</b> Bots with random brains (515 numbers nobody tuned) played 30,720 matches of real volleyball in under four seconds, 15 rounds of evolution, and spread into 322 of 400 styles on the map. A quick test, nothing kept yet. Nobody told them how to play; from here every winner gets copied with small random changes, and the map keeps the best of every style."
     },
     {
       "t": "26 OCT",
-      "text": "<b>Named.</b> Daniel picked Darwin Beach, where volleyball evolves. He also approved a public code repository (Apache 2.0 licence, no secrets) and a private cloud bucket for the files, inside the free plan."
+      "text": "<b>The court is built, and it tells the truth.</b> Opus finished the game itself and the twin test: 1,000 matches replayed identically, tick for tick, on the training computer and in a browser engine. So when you watch a replay on the page, you will see the exact match the bots learned from, not a re-enactment."
     },
     {
       "t": "26 OCT",
-      "text": "<b>Evolution machine on the practice court.</b> Sonnet finished breeding, the family book, the exporter and the uploader, all against the pretend game: 40 tests pass, a 200-round run found 244 of 400 styles. Fable read it and merged it."
+      "text": "<b>Open doors.</b> The code is public on GitHub as dangoodface/darwin-beach, with an open licence and a README anyone can read. Build in public: the bots learn in the open."
     },
     {
       "t": "26 OCT",
-      "text": "<b>Rulings.</b> Opus found eight gaps in the rulebook while reading the original game (serve speed, hashing order, what happens on a bad match, how the scripted opponent is named). Fable ruled on each and updated the rulebook."
+      "text": "<b>A name and an address.</b> Daniel named it Darwin Beach, where volleyball evolves. It will live at play.thegoodface.ai/darwin-beach/, next to the other games, once there is something to watch."
     },
     {
       "t": "26 OCT",
-      "text": "<b>First piece in.</b> Sonnet's seeds and offspring (how a bot is born and bred) passed nine tests and joined the machine. Fable read it and merged it."
+      "text": "<b>Evolution works, on the practice court.</b> Before the real game existed, Sonnet ran the breeding machine on a pretend game: 200 rounds of evolution found 244 of 400 ways to play. The idea is simple: copy the winners with small random changes (mutation), sometimes mix two winners (crossover), and keep the best player of every style instead of one champion, because variety is where surprising strategies come from (the map, MAP-Elites). Practice result, pretend game."
     },
     {
       "t": "26 OCT",
-      "text": "<b>Work split three ways.</b> Opus builds the game, Sonnet builds the evolution machine, Funsies builds the page. Fable checks every piece and puts them together."
+      "text": "<b>The rulebook is settled.</b> While porting the original game, Opus found eight details nobody had written down (how the serve is thrown, what to do when a number breaks, how the scripted rival is named). Fable ruled on each. Why it matters: the bots learn in a world with no surprises, so the same match comes out the same anywhere."
     },
     {
       "t": "26 OCT",
-      "text": "<b>Fable takes the lead.</b> Fable plans the build and hands work to Opus and Sonnet. Daniel talks to the team through Funsies."
+      "text": "<b>Work split three ways.</b> Opus builds the game, Sonnet builds the breeding machine, Funsies builds the page. Fable reads every piece and fits them together."
     },
     {
       "t": "26 OCT",
-      "text": "<b>The plan.</b> Write the game once in Rust so training and the browser always agree. Build it in three worlds: the map lights up, fair and playable, level up."
+      "text": "<b>The plan.</b> Write the game once, so training and the browser always agree. Score every bot against fixed rivals that never change, the hall of fame, like measuring height against a wall instead of against each other, so a rising score cannot lie. Build it in three worlds: the map lights up, fair and playable, level up."
     },
     {
       "t": "26 OCT",
-      "text": "<b>Game picked.</b> Slime volleyball, plus a map that fills with every style of play."
+      "text": "<b>Game picked.</b> Slime volleyball, because two blobs and a ball are enough to learn in, plus a map that fills with every way to play."
     },
     {
       "t": "26 OCT",
-      "text": "<b>Gear check.</b> 16 processor cores, 23 GB of free memory, a working graphics card, all the tools installed."
+      "text": "<b>Gear check.</b> 16 processor cores, 23 GB of free memory, a working graphics card, all the tools installed. Enough to play a few thousand matches a second."
     }
   ]
 }
@@ -874,33 +840,163 @@
   stat(ms, 'MAP SCORE', S.map.qd_score == null ? NA : S.map.qd_score);
   stat(ms, 'CHAMPION RATING', S.map.champion_elo == null ? NA : S.map.champion_elo);
 
-  // the machine: lanes of parts, each done, being built or not started
+  // the machine: one beach under construction, drawn from state.machine
   var M = S.machine, byId = {}, counts = { done: 0, working: 0, missing: 0 };
   var tagText = { done: 'DONE', working: 'BUILDING', missing: 'NOT YET' };
   M.parts.forEach(function (p) { byId[p.id] = p; counts[p.state] = (counts[p.state] || 0) + 1; });
   document.getElementById('m-count').innerHTML =
     '<span class="done">' + counts.done + ' DONE</span> &middot; <span class="working">' + counts.working + ' BUILDING</span> &middot; <span class="missing">' + counts.missing + ' NOT YET</span>';
-  var lanes = document.getElementById('lanes');
-  M.lanes.forEach(function (lane) {
-    var row = el('div', 'lane');
-    row.appendChild(el('div', 'lane-name', esc(lane.name)));
-    var parts = el('div', 'lane-parts');
-    lane.parts.forEach(function (id, i) {
-      var p = byId[id]; if (!p) return;
-      if (i > 0) parts.appendChild(el('div', 'arrow', '&#9656;'));
-      var b = el('div', 'part ' + p.state);
-      b.setAttribute('title', p.plain + (p.tech ? ' (' + p.tech + ')' : ''));
-      b.appendChild(el('div', 'p-name', esc(p.name)));
-      b.appendChild(el('div', 'p-who', esc(p.who)));
-      b.appendChild(el('div', 'p-tag', tagText[p.state] || esc(p.state)));
-      b.appendChild(el('div', 'p-plain', esc(p.plain) + (p.tech ? ' <span class="p-tech">(' + esc(p.tech) + ')</span>' : '')));
-      if (p.proof) b.appendChild(el('div', 'p-proof', 'Proof: ' + esc(p.proof)));
-      parts.appendChild(b);
-    });
-    row.appendChild(parts);
-    lanes.appendChild(row);
-  });
   document.getElementById('m-note').textContent = M.note || '';
+  var cssv = getComputedStyle(document.documentElement);
+  function v(name) { return cssv.getPropertyValue(name).trim(); }
+  var K = { slime: v('--slime'), rival: v('--rival'), sand: v('--sand'), cyan: v('--cyan'), red: v('--red'), dim: v('--dim'),
+            line: v('--line'), hard: v('--line-hard'), bg0: v('--bg-0'), bg1: v('--bg-1'), bg2: v('--bg-2'), wood: '#8b5a2b', paper: '#f3f0e0' };
+  // every object is drawn in a 120 by 120 box whose ground line is y = 108; the label sits at y = 119
+  var ART = {
+    rulebook: function () {
+      return '<rect x="57" y="36" width="6" height="72" fill="' + K.wood + '"/>' +
+        '<polygon points="22,40 88,40 98,50 88,60 22,60" fill="' + K.sand + '"/>' +
+        '<text x="55" y="55" text-anchor="middle" font-family="VT323" font-size="15" fill="' + K.bg0 + '">RULES</text>' +
+        '<polygon points="32,66 98,66 98,86 32,86 22,76" fill="' + K.cyan + '"/>' +
+        '<text x="66" y="81" text-anchor="middle" font-family="VT323" font-size="15" fill="' + K.bg0 + '">FORMATS</text>';
+    },
+    game: function () {
+      return '<rect x="6" y="62" width="108" height="46" fill="' + K.sand + '" fill-opacity=".3" stroke="' + K.sand + '" stroke-width="2"/>' +
+        '<line x1="60" y1="40" x2="60" y2="108" stroke="' + K.hard + '" stroke-width="3"/>' +
+        '<rect x="54" y="40" width="12" height="30" fill="none" stroke="' + K.hard + '" stroke-width="1" stroke-dasharray="3 2"/>' +
+        '<path d="M 18 108 a 12 12 0 0 1 24 0 z" fill="' + K.slime + '"/>' +
+        '<path d="M 78 108 a 12 12 0 0 1 24 0 z" fill="' + K.rival + '"/>' +
+        '<circle cx="46" cy="52" r="5" fill="' + K.sand + '"/>';
+    },
+    twin: function () {
+      return '<line x1="34" y1="108" x2="34" y2="28" stroke="' + K.dim + '" stroke-width="3"/>' +
+        '<line x1="86" y1="108" x2="86" y2="28" stroke="' + K.dim + '" stroke-width="3"/>' +
+        '<polygon points="36,30 68,42 36,54" fill="' + K.slime + '"/>' +
+        '<polygon points="84,30 52,42 84,54" fill="' + K.slime + '"/>' +
+        '<rect x="52" y="72" width="16" height="3" fill="' + K.cyan + '"/><rect x="52" y="80" width="16" height="3" fill="' + K.cyan + '"/>';
+    },
+    speed: function () {
+      return '<line x1="30" y1="108" x2="30" y2="70" stroke="' + K.dim + '" stroke-width="4"/>' +
+        '<line x1="90" y1="108" x2="90" y2="70" stroke="' + K.dim + '" stroke-width="4"/>' +
+        '<rect x="12" y="24" width="96" height="48" fill="' + K.bg2 + '" stroke="' + K.hard + '" stroke-width="2"/>' +
+        '<text x="70" y="58" text-anchor="middle" font-family="VT323" font-size="24" fill="' + K.sand + '">1000/s</text>' +
+        '<circle cx="28" cy="48" r="9" fill="none" stroke="' + K.cyan + '" stroke-width="2"/>' +
+        '<line x1="28" y1="48" x2="28" y2="41" stroke="' + K.cyan + '" stroke-width="2"/><line x1="28" y1="48" x2="34" y2="48" stroke="' + K.cyan + '" stroke-width="2"/>';
+    },
+    seeds: function () {
+      return '<ellipse cx="60" cy="98" rx="42" ry="11" fill="' + K.wood + '"/>' +
+        '<ellipse cx="38" cy="84" rx="11" ry="14" fill="' + K.paper + '" stroke="' + K.dim + '"/>' +
+        '<ellipse cx="82" cy="84" rx="11" ry="14" fill="' + K.paper + '" stroke="' + K.dim + '"/>' +
+        '<path d="M 49 80 L 49 86 a 11 12 0 0 0 22 0 L 71 80 L 66 75 L 60 81 L 54 75 Z" fill="' + K.paper + '" stroke="' + K.dim + '"/>' +
+        '<path d="M 52 78 a 8 8 0 0 1 16 0 z" fill="' + K.slime + '"/>' +
+        '<circle cx="63" cy="74" r="1.6" fill="' + K.bg0 + '"/>';
+    },
+    evolution: function () {
+      var tips = [[30, 30], [42, 14], [72, 10], [100, 18], [108, 40]], s = '';
+      s += '<path d="M 56 108 C 60 80 62 60 70 38" stroke="' + K.wood + '" stroke-width="7" fill="none" stroke-linecap="round"/>';
+      tips.forEach(function (t) {
+        s += '<line x1="70" y1="38" x2="' + t[0] + '" y2="' + t[1] + '" stroke="' + K.slime + '" stroke-width="3"/>';
+        s += '<circle cx="' + ((70 + t[0]) / 2) + '" cy="' + ((38 + t[1]) / 2) + '" r="3" fill="' + K.slime + '"/>';
+        s += '<circle cx="' + t[0] + '" cy="' + t[1] + '" r="4" fill="' + K.slime + '"/>';
+      });
+      return s + '<circle cx="70" cy="38" r="5" fill="' + K.sand + '"/>';
+    },
+    book: function () {
+      var s = '<line x1="34" y1="108" x2="44" y2="52" stroke="' + K.wood + '" stroke-width="4"/>' +
+        '<line x1="86" y1="108" x2="76" y2="52" stroke="' + K.wood + '" stroke-width="4"/>' +
+        '<line x1="60" y1="54" x2="60" y2="108" stroke="' + K.dim + '" stroke-width="2"/>';
+      for (var y = 64; y < 108; y += 11) s += '<line x1="54" y1="' + y + '" x2="66" y2="' + y + '" stroke="' + K.dim + '" stroke-width="2"/>';
+      return s + '<rect x="28" y="46" width="64" height="8" fill="' + K.wood + '"/>' +
+        '<rect x="36" y="18" width="48" height="28" fill="' + K.bg2 + '" stroke="' + K.sand + '" stroke-width="2"/>' +
+        '<polygon points="30,18 60,6 90,18" fill="' + K.sand + '"/>' +
+        '<rect x="86" y="30" width="18" height="13" fill="' + K.paper + '" stroke="' + K.dim + '"/>' +
+        '<line x1="95" y1="30" x2="95" y2="43" stroke="' + K.dim + '"/>';
+    },
+    uploads: function () {
+      return '<polygon points="60,28 48,108 72,108" fill="none" stroke="' + K.dim + '" stroke-width="1.5"/>' +
+        '<line x1="60" y1="108" x2="60" y2="28" stroke="' + K.dim + '" stroke-width="3"/>' +
+        '<line x1="46" y1="62" x2="74" y2="62" stroke="' + K.dim + '" stroke-width="2"/><line x1="50" y1="84" x2="70" y2="84" stroke="' + K.dim + '" stroke-width="2"/>' +
+        '<circle cx="60" cy="24" r="4" fill="' + K.red + '"/>' +
+        '<path d="M 44 22 a 16 16 0 0 1 32 0" fill="none" stroke="' + K.cyan + '" stroke-width="2"/>' +
+        '<path d="M 34 20 a 26 26 0 0 1 52 0" fill="none" stroke="' + K.cyan + '" stroke-width="2" stroke-opacity=".6"/>' +
+        '<path d="M 24 18 a 36 36 0 0 1 72 0" fill="none" stroke="' + K.cyan + '" stroke-width="2" stroke-opacity=".3"/>';
+    },
+    page: function () {
+      var s = '<line x1="28" y1="108" x2="28" y2="72" stroke="' + K.dim + '" stroke-width="4"/>' +
+        '<line x1="92" y1="108" x2="92" y2="72" stroke="' + K.dim + '" stroke-width="4"/>' +
+        '<rect x="8" y="12" width="104" height="62" fill="' + K.bg0 + '" stroke="' + K.hard + '" stroke-width="2"/>';
+      var lit = [.9, 0, .5, .7, 0, .3, 0, .8, .4, 0, .6, 0, .2, .9, 0, .5, 0, .7, .3, 0, 0, .6, .8, 0];
+      for (var i = 0; i < 24; i++) {
+        var cx = 16 + (i % 6) * 15, cy = 20 + Math.floor(i / 6) * 12;
+        s += '<rect x="' + cx + '" y="' + cy + '" width="13" height="10" fill="' + (lit[i] ? K.slime : K.bg2) + '" fill-opacity="' + (lit[i] || 1) + '"/>';
+      }
+      return s;
+    },
+    play: function () {
+      return '<rect x="34" y="68" width="52" height="40" fill="' + K.bg2 + '" stroke="' + K.hard + '" stroke-width="2"/>' +
+        '<line x1="54" y1="68" x2="54" y2="42" stroke="' + K.dim + '" stroke-width="5" stroke-linecap="round"/>' +
+        '<circle cx="54" cy="36" r="9" fill="' + K.red + '"/>' +
+        '<circle cx="76" cy="80" r="6" fill="' + K.sand + '"/>' +
+        '<circle cx="76" cy="96" r="6" fill="' + K.cyan + '"/>';
+    }
+  };
+  var CRANE = '<g class="crane"><line x1="98" y1="106" x2="98" y2="12" stroke="' + K.sand + '" stroke-width="2"/>' +
+    '<line x1="88" y1="12" x2="119" y2="12" stroke="' + K.sand + '" stroke-width="2"/>' +
+    '<line x1="113" y1="12" x2="113" y2="28" stroke="' + K.sand + '" stroke-width="1.5"/>' +
+    '<rect x="108" y="28" width="10" height="7" fill="' + K.sand + '"/>' +
+    '<circle cx="98" cy="8" r="2.5" fill="' + K.red + '" class="blink"/>' +
+    '<circle cx="10" cy="97" r="4" fill="' + K.sand + '"/><rect x="6" y="101" width="8" height="8" fill="' + K.sand + '"/></g>';
+  // three arrangements of the same ten objects, picked by the panel's width
+  var LAYOUTS = {
+    wide: { w: 900, h: 332, sky: 100, slots: { page: [60, 10], evolution: [270, 10], book: [500, 10], uploads: [720, 10],
+            rulebook: [10, 180], game: [160, 180], twin: [310, 180], speed: [460, 180], seeds: [610, 180], play: [760, 180] } },
+    medium: { w: 600, h: 392, sky: 80, slots: { rulebook: [10, 20], game: [128, 20], twin: [246, 20], speed: [364, 20], seeds: [482, 20],
+              evolution: [10, 250], book: [128, 250], uploads: [246, 250], page: [364, 250], play: [482, 250] } },
+    narrow: { w: 390, h: 520, sky: 60, slots: { rulebook: [7, 10], game: [135, 10], twin: [263, 10], speed: [7, 135], seeds: [135, 135],
+              evolution: [263, 135], book: [7, 260], uploads: [135, 260], page: [263, 260], play: [135, 385] } }
+  };
+  function sceneSvg(L) {
+    var s = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + L.w + ' ' + L.h + '" role="img" aria-label="The beach under construction">';
+    s += '<rect x="0" y="0" width="' + L.w + '" height="' + L.h + '" fill="' + K.bg1 + '"/>';
+    for (var i = 0; i < 24; i++) { var sx = (i * 137 + 31) % L.w, sy = (i * 61 + 7) % (L.sky - 8); s += '<rect x="' + sx + '" y="' + sy + '" width="2" height="2" fill="' + K.txt + '" fill-opacity="' + (0.25 + (i % 3) * 0.2) + '"/>'; }
+    s += '<circle cx="' + (L.w - 50) + '" cy="30" r="12" fill="' + K.paper + '" fill-opacity=".75"/>';
+    s += '<rect x="0" y="' + (L.sky - 6) + '" width="' + L.w + '" height="6" fill="' + K.cyan + '" fill-opacity=".35"/>';
+    s += '<rect x="0" y="' + L.sky + '" width="' + L.w + '" height="' + (L.h - L.sky) + '" fill="' + K.sand + '" fill-opacity=".10"/>';
+    for (var j = 0; j < 40; j++) { var dx = (j * 193 + 11) % L.w, dy = L.sky + 10 + (j * 71) % (L.h - L.sky - 14); s += '<rect x="' + dx + '" y="' + dy + '" width="3" height="2" fill="' + K.sand + '" fill-opacity=".22"/>'; }
+    M.parts.forEach(function (p) {
+      var at = L.slots[p.id]; if (!at || !ART[p.id]) return;
+      s += '<g class="obj ' + p.state + '" data-id="' + p.id + '" tabindex="0" role="button" transform="translate(' + at[0] + ',' + at[1] + ')">';
+      s += '<title>' + esc(p.label || p.name) + ': ' + esc(p.plain) + '</title>';
+      s += '<rect class="box" x="0" y="0" width="120" height="122"/>';
+      s += '<g class="art">' + ART[p.id]() + '</g>' + CRANE;
+      s += '<text class="lbl" x="60" y="120" text-anchor="middle" font-size="15">' + esc(p.label || p.name) + '</text></g>';
+    });
+    return s + '</svg>';
+  }
+  K.txt = v('--txt');
+  var beach = document.getElementById('beach'), detail = document.getElementById('m-detail'), currentLayout = null, selectedId = null;
+  function showPart(p) {
+    selectedId = p.id;
+    detail.innerHTML = '<b>' + esc(p.label || p.name) + '</b> &middot; ' + esc(p.who) + ' &middot; <span class="st-' + p.state + '">' + tagText[p.state] + '</span><br>' +
+      esc(p.plain) + (p.tech ? ' <span style="color:var(--dim)">(' + esc(p.tech) + ')</span>' : '') +
+      (p.proof ? '<br><span style="color:var(--dim)">Proof: ' + esc(p.proof) + '</span>' : '');
+    Array.prototype.forEach.call(beach.querySelectorAll('.obj'), function (g) { g.classList.toggle('selected', g.getAttribute('data-id') === p.id); });
+  }
+  function drawBeach() {
+    var w = beach.clientWidth || 600, name = w < 480 ? 'narrow' : w < 760 ? 'medium' : 'wide';
+    if (name === currentLayout) return;
+    currentLayout = name;
+    beach.innerHTML = sceneSvg(LAYOUTS[name]);
+    Array.prototype.forEach.call(beach.querySelectorAll('.obj'), function (g) {
+      var p = byId[g.getAttribute('data-id')];
+      g.addEventListener('click', function () { showPart(p); });
+      g.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); showPart(p); } });
+      if (selectedId === p.id) g.classList.add('selected');
+    });
+  }
+  drawBeach();
+  if (window.ResizeObserver) new ResizeObserver(function () { drawBeach(); }).observe(beach);
+  else window.addEventListener('resize', drawBeach);
 
   // the battle
   var B = S.battle, b = document.getElementById('battle');
