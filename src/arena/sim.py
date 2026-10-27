@@ -13,6 +13,8 @@ from typing import NamedTuple, Protocol
 import numpy as np
 
 N_DESC = 8
+DESCRIPTOR_NAMES = ("court_position", "airtime", "hits", "mean_hit_height", "mean_speed_after_hit",
+                    "jumps", "distance", "points")  # docs/ABI.md order
 MASK64 = (1 << 64) - 1
 SCRIPTED_SLOT = 0xFFFFFFFF  # ABI: this slot index means the kernel's scripted bot
 SCRIPTED_ID = "scripted-v1"  # its id in our files; there is no genome file for it
