@@ -61,3 +61,14 @@ coach, entropy below 1.8, and evaluation points for above 1.5 against the real c
 over 64 matches, both sides (0 to 5 does not qualify), at `w = 0` and `p = 0` for at least the last 30 minutes, and
 the exported genome passing `export.py`'s 1,000-state check. If it only wins while shaping is on, it stays off the
 page. If it beats the coach, it plays the archive elites once for the comparison with selection.
+
+### Result, 27 October 2026, 05:20: ppo-2 did not earn a place
+
+ppo-2 ran from 03:04 to 05:04 (two threads, 11,389 updates, 137 million ticks) with `w = 1` and `p = 0.5` fading
+to zero at 72 minutes. Against the softened coach with hints it took 1.9 points a match at ten minutes; as the hints
+and the softening faded its training score fell to 0.06 a match and did not recover. Against the real coach it took
+0.5 points a match at every evaluation and 0.3 of 5 over the final 64 matches, win rate zero. Entropy sat at 2.04
+for the whole run, so the policy never sharpened, and none of the 30-minute signs was met. Verdict: no place on the
+page. The species is parked and the code is kept as a recorded dead end: the trainer, the shaping and the export
+check all work, and the next attempt should change the objective rather than the hints (a reward that does not fade,
+or self-play against generation-zero genomes rather than coach-level elites). Log: `$ARENA_DATA/species/ppo-2/`.
