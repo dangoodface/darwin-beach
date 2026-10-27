@@ -122,3 +122,48 @@ MAP-Elites filled 215 cells to CMA-ME's 206, so no prior either way. Run 4
 shares run 3's seed, so rivals, evaluation seeds and the first random
 generations match and only the optimiser differs; compare at equal
 generation counts, since CMA-ME adds about 75 ms of Python a generation.
+
+## Tick 3, 05:15: run 3 is in, the coach is unbeaten, the RL try failed, run 4 is live
+
+Run 3 final (20261027T085957Z-night-r3, two hours from 02:59:57, 16 coach
+matches per candidate): 24,873 generations, 101.9 million matches at 14,149
+a second, 400 of 400 cells by generation 63 (15 seconds), 366 lit, QD-score
+2,470, best fitness +2.64 at cell [14, 6], born generation 24,789; all 400
+stored matches re-played to the same hash. Half the generations of run 2,
+because every candidate plays 64 matches instead of 32.
+
+On 16 graded matches nobody beats the coach: the best elite won 7 of 16
+(margin -0.44), and on 16 fresh serves 6 of 16 (-0.44). Run 2's 21
+"coach-beaters" were the noise of 8 matches; doubling the sample removed
+them, as the tick 2 check predicted. The strongest region is mid court
+with hops (+1.84 mean); the weakest is back court kangaroos (+0.45). Lit
+and QD-score do not compare with run 2 (different rivals); run 4 shares run
+3's seed, so from here the comparison is exact.
+
+The RL species, second try (ppo-2, 03:04 to 05:04, 11,389 updates, 137
+million ticks). Against the softened coach with hints it took 1.9 points a
+match at ten minutes; as the hints and the softening faded (both zero at 72
+minutes) its training score fell to 0.06 and never came back. Against the
+real coach it took 0.5 points a match at every evaluation and 0.3 of 5 on
+the final 64 matches, win rate zero. Policy entropy sat at 2.04 for two
+hours, so the network never committed to a behaviour; Sonnet's 30-minute
+signs (training points above 2, entropy below 1.8, evaluation above 1.5)
+were all missed. Verdict: the gate is not met, the species is parked for
+the night and there is no third trainer. What it taught stays in
+species/ppo/DESIGN.md on its branch. Bid for tick 4: merge the branch with
+the result written in, since it is tested and touches nothing else, or
+leave that to Daniel in the morning.
+
+Run 4 (20261027T110547Z-night-r4-cma) started at 05:05:46: CMA-ME on run
+3's seed and rules, two hours. Main now carries Sonnet's fresh-serve check
+(PR #3): every export plays the best elite and every graded coach-beater on
+8 serves of their own, never used for selection, and writes the result
+beside the graded one; run 4 is the first run to carry it. funsies' page
+cards say "on the serves it was graded on" (merged here), and run 2's reels
+are rendered: then-and-now, a 52-second rally at cell [14, 10] against the
+coach, and the champion's 5 to 1 on a graded serve, captioned as such.
+
+Run 5, the ladder's debut, is configured (configs/night/r5-ladder.toml):
+run 3's rules on seed 20261031 with the ladder on, a challenge every 10
+generations over 100 matches, promotion at 55 per cent plus out-rating the
+champion. It starts when run 4 ends, about 07:06.
