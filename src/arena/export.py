@@ -173,7 +173,7 @@ def export_run(
         cells.append({
             "i": cell[0], "j": cell[1], "genome_id": gid, "fitness": e["fitness"], "rating": None,
             "lit": e["fitness"] >= floor,
-            "bd": e["bd"], "gen": e["gen"], "era": e["era"],
+            "bd": e["bd"], "gen": e["gen"], "era": e["era"], "margins": e["margins"],
             "replay": {"seed": _json_seed(e["replay_seed"]), "opponent_id": e["replay_opponent_id"],
                        "side": e["replay_side"], "final_hash": e["replay_final_hash"],
                        "ticks": e["replay_ticks"],
@@ -183,6 +183,7 @@ def export_run(
     _write_json(out / "latest.json", {
         "run_id": run_id, "kernel_sha": kernel_sha, "kernel_version": run["kernel_version"],
         "generated_at": _iso(now), "generation": last["gen"], "era": last["era"],
+        "probes": json.loads(run["probe_ids_json"]),
         "grid": {"descriptors": grid["descriptors"], "indices": grid["indices"],
                  "bounds": grid["bounds"], "resolution": grid["resolution"], "lit_floor": floor},
         "cells": cells,

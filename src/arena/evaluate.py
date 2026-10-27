@@ -60,6 +60,7 @@ class Evaluator:
         out: list[EvalResult] = []
         for i, g in enumerate(genomes):
             margins, descs = [], []
+            per_opp = len(self.seeds) * 2  # matches per opponent: opponent-major, then seed, then side
             block = results[i * per : (i + 1) * per]
             first = block[0]  # seed 0, probe 0 (the scripted bot when there is one), candidate on the left
             replay = Replay(self.seeds[0], self.opponents[0][0], "A", first.final_hash, first.ticks,
@@ -70,5 +71,8 @@ class Evaluator:
                 margins.append(mine - theirs)
                 descs.append(r.desc_a if left else r.desc_b)
             d = np.mean(np.asarray(descs, dtype=np.float64), axis=0)
-            out.append(EvalResult(g, tuple(float(d[j]) for j in self.indices), float(np.mean(margins)), replay))
+            by_opp = tuple(float(np.mean(margins[k * per_opp : (k + 1) * per_opp]))
+                           for k in range(len(self.opponents)))
+            out.append(EvalResult(g, tuple(float(d[j]) for j in self.indices), float(np.mean(margins)),
+                                  replay, by_opp))
         return out

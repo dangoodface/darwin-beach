@@ -30,6 +30,7 @@ class EvalResult(NamedTuple):
     bd: tuple[float, ...]
     fitness: float
     replay: Replay | None = None
+    margins: tuple[float, ...] | None = None  # mean margin per opponent, in probe order
 
 
 class Optimizer(Protocol):
