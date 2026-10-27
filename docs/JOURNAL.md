@@ -348,3 +348,107 @@ Decisions, and what waits for the morning:
   it), and the pitch page's wording. Done without a gate and reversible:
   the RL species merged with its negative result, run 5's first start
   abandoned.
+
+## Afternoon, 27 Oct, 15:30: seven specialists, by request, and nobody loses
+
+Daniel woke, read the night, and asked for specialists: bots trained hard for
+one style each, with a rule that makes the style, and a twin trained the same
+way without the rule so the rule's cost shows. He picked six of twenty
+proposals and added a seventh of his own.
+
+| style | the rule | twin |
+|---|---|---|
+| flat earther | never jumps: the jump output is wired off | yes |
+| kangaroo | always jumps: the jump output is wired on | yes |
+| long ball | hits hard and low: ball speed after a hit at least 34.8, hit height at most 3.83 | yes |
+| lob artist | hits soft and high: speed at most 25.8, hit height at least 5.47 | yes |
+| sprinter | ends points fast: a penalty for every tick a point lasts | yes |
+| all-rounder | fitness is the smallest of its three margins, so it cannot specialise against one rival | no, by design |
+| joga bonito (Daniel's) | at least a third of its points won after four or more consecutive own touches spanning half its court | yes |
+
+Built for it before lunch and merged on main at ceeb456: kernel version 2
+(Opus, PR #4), which counts juggled points and touch streaks as two new
+descriptors, physics and hashes unchanged, so run 5's replays still verify;
+and the specialist trainer (Sonnet, PR #5), an evolution strategy rather
+than a map: 64 nudged copies of one starting bot in antithetic pairs, Adam
+on the estimated gradient, 8 training serves resampled every generation, 16
+graded serves every fifth generation, and 8 held-out fresh serves for the
+verdict. The rivals are run 5's champion, run 4's champion and the coach, on
+both sides. Window styles pay a penalty outside their window, pinned styles
+have the output wired, the sprinter and joga bonito carry their rule in the
+fitness. Each specialist starts from the best lit cell of run 5 (or run 4)
+that fits its window, or from run 5's champion when no window applies.
+
+The queue ran from 12:07 to 15:27 on 15 workers, twenty minutes per
+specialist and ten per twin: 24,404 generations and 75.4 million matches,
+6,285 a second (a generation is 64 candidates by 8 serves by 3 rivals by 2
+sides, plus grading). Fresh serves below are 16 per rival, never seen in
+training; the hall-of-fame column is 8 new seeds on both sides against each
+of run 5's eleven members, era 0 the coach, era 10 the champion.
+
+| specialist | run | fresh margin vs run 5 champion / run 4 champion / coach | the rule, as played on fresh serves | hall of fame: members beaten, weakest score |
+|---|---|---|---|---|
+| flat earther | 180711Z | +4.56 / +4.81 / +4.31 | 0 jumps in every match | 11 of 11, 16 of 16 against all |
+| its twin | 182712Z | +4.81 / +4.69 / +4.88 | 20 jumps a match | 11 of 11, 15 of 16 (era 7) |
+| all-rounder | 183713Z | +4.88 / +4.88 / +4.81 | smallest margin +4.81 | 11 of 11, 14 of 16 (era 8) |
+| kangaroo | 185713Z | +3.56 / +4.88 / +4.50 | 81 jumps a match, airborne 97 per cent of ticks | 11 of 11, 14 of 16 (eras 8, 9) |
+| its twin | 191714Z | +3.75 / +4.44 / +4.44 | 82 jumps a match | 11 of 11, 14 of 16 (era 0) |
+| sprinter | 192716Z | +5.00 / +4.94 / +4.94 | 329 ticks a point, 15 hits a match, ball speed 34 after a hit | 11 of 11, 16 of 16 against all |
+| its twin | 194716Z | +4.81 / +4.88 / +4.69 | 388 ticks a point, 22 hits, speed 27 | 11 of 11, 15 of 16 (eras 6, 7, 9) |
+| long ball | 195717Z | +4.94 / +4.88 / +4.69 | speed 37.1, hit height 3.81, airborne 22 per cent | 11 of 11, 15 of 16 (era 7) |
+| its twin | 201718Z | +4.69 / +4.75 / +4.69 | speed 33.5, hit height 3.97, airborne 36 per cent | 11 of 11, 12 of 16 (era 9) |
+| lob artist | 202719Z | +4.88 / +5.00 / +4.69 | speed 23.2, hit height 6.05 | 11 of 11, 15 of 16 (eras 7, 8) |
+| its twin | 204719Z | +4.81 / +5.00 / +4.81 | speed 32.4, hit height 5.94 | 11 of 11, 14 of 16 (era 9) |
+| joga bonito | 205720Z | +4.75 / +4.94 / +4.25 | 2.25 of 4.73 points a match juggled (48 per cent), longest run 6.9 touches | 11 of 11, 14 of 16 (era 9) |
+| its twin | 211721Z | +4.81 / +4.88 / +4.69 | 0.25 points juggled (5 per cent) | 11 of 11, 15 of 16 (eras 6, 7, 9) |
+
+Run ids are `20261027T<time>-spec-<style>[-twin]` under
+`$ARENA_DATA/specialists/`, each with `result.json` (the contract is in
+docs/DATA.md), the winning genome, the kernel it ran on and `hof.json` from
+the generality check.
+
+Three things the afternoon says.
+
+First, nobody loses, so strength no longer tells the styles apart. The
+margin is out of 5, five points a match; a bot nudged for twenty minutes from
+the champion against three fixed rivals reaches +4.8 or better against each,
+and the never-jumper, the worst placed by its rule, reaches +4.3 against the
+coach. The same bots beat all eleven hall-of-fame members on serves nobody
+trained on; the weakest score in the whole table is the long ball twin's 12
+of 16 against the era 9 champion. The members that take a match or two are
+champions 7 to 9, the ones the coach beat 100 of 100: the night's cycle is
+still there. The rivals chosen at noon were the strongest bots in the house;
+by 15:30 every specialist is stronger. The next ladder needs them in it.
+
+Second, the rules bite where they should, and the twins show what they cost.
+The flat earther wins without a single jump while its twin learns to jump 20
+times a match; the sprinter's points are 15 per cent shorter than its twin's,
+with fewer touches and a harder ball; the long ball hits at 37 against its
+twin's 33, the lob artist at 23 against 32; the juggler wins half its points
+after a four-touch run across its half, its twin one in twenty. Measured
+against the unconstrained nudge from the champion (+4.81 against the run 5
+champion), the never-jumper gives up 0.25 of margin and the kangaroo 1.25,
+the largest cost in the table; its points last twice as long, 639 ticks. The
+kangaroo's twin is not a contrast: both started from the same high-airtime
+elite at cell [14, 19] and the twin kept jumping, so that pair shows the
+start cell, not the rule.
+
+Third, the same file gives the same bot. The sprinter's twin and joga
+bonito's twin are the same experiment, an unconstrained nudge from run 5's
+champion under the same seed, and they produced the same genome byte for
+byte (9e1c72c0, 2,060 bytes); one ran two generations longer because its ten
+minutes went a little faster, and the best came before either cut-off. Ten
+minutes of compute were spent twice; the page should show that bot once.
+
+For the trainer, for Sonnet and Opus:
+- Twins of champion-started styles are one run: cache by start, rule and
+  seed, or skip the duplicate.
+- The verdict rivals are too weak to rank specialists now. Rank them against
+  each other, a thirteen-bot round robin on fresh serves, and put the winners
+  in the ladder for run 6.
+- The fresh-serve margin is nearly saturated at +5; a harder verdict is wins
+  against the specialists, or longer matches.
+
+The campaign page: "The Specialist" level cleared (its test was a specialist
+beating its neighbours; these beat every rival and every champion), and the
+"Learning by nudges" skill goes up one.
