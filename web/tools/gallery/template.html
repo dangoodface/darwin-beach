@@ -1,0 +1,99 @@
+<title>Darwin Beach Replays</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Eleven matches from one night of evolution, replayed live in your browser by the engine that trained the bots.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* One committed night-beach look, the same as the Darwin Beach site. */
+  :root {
+    color-scheme: dark;
+    --night: #0b1026; --night-2: #131a3a; --sea: #101a44; --rule: #26305e;
+    --ink: #eef3ff; --muted: #9aa6cf; --slime: #39ff9f; --rival: #ff4fc8;
+    --sun: #ffc93c; --sand: #d9b26a; --foam: #cfe3ff;
+    --display: "Press Start 2P", "Courier New", monospace;
+    --body: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--night); color: var(--ink); }
+  body { font-family: var(--body); font-size: 14px; line-height: 1.6; }
+  .wrap {
+    max-width: 1080px; margin: 0 auto; display: grid; gap: 22px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px 40px;
+  }
+  header { display: grid; gap: 10px; }
+  h1 { font-family: var(--display); font-weight: 400; margin: 0; font-size: clamp(22px, 5vw, 40px); line-height: 1.2; text-wrap: balance; }
+  h1 .d { color: var(--slime); } h1 .b { color: var(--rival); }
+  .tag { margin: 0; max-width: 62ch; font-size: clamp(14px, 2vw, 16px); }
+  .stage { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: 22px; align-items: start; }
+  .main { display: grid; gap: 12px; min-width: 0; }
+  canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 8 / 3; border: 1px solid var(--rule); background: var(--sea); }
+  .act { font-family: var(--display); font-size: 10px; letter-spacing: 1px; color: var(--muted); }
+  #m-act { margin: 0; }
+  #m-title { font-family: var(--display); font-weight: 400; font-size: clamp(14px, 2.4vw, 20px); color: var(--sun); margin: 0; text-wrap: balance; line-height: 1.4; }
+  #m-caption { margin: 0; max-width: 65ch; }
+  #verdict { font-size: 13px; padding: 8px 10px; border-left: 3px solid var(--rule); background: var(--night-2); color: var(--muted); overflow-wrap: anywhere; }
+  #verdict[data-kind="ok"] { border-color: var(--slime); color: var(--ink); }
+  #verdict[data-kind="ok"]::before { content: "\2713  "; color: var(--slime); font-weight: 700; }
+  #verdict[data-kind="bad"] { border-color: var(--rival); color: var(--ink); }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { font: 500 13px var(--body); color: var(--ink); background: var(--night-2); border: 1px solid var(--rule); padding: 8px 12px; cursor: pointer; }
+  button:hover { border-color: var(--sun); }
+  button.primary { background: var(--slime); color: var(--night); border-color: var(--slime); font-weight: 700; }
+  :focus-visible { outline: 2px solid var(--sun); outline-offset: 3px; }
+  label { font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+  input { accent-color: var(--slime); }
+  ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  ol .act { padding-top: 10px; }
+  ol .act:first-child { padding-top: 0; }
+  ol button { width: 100%; text-align: left; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; padding: 8px 10px; }
+  ol button .n { font-family: var(--display); font-size: 10px; color: var(--muted); grid-row: span 2; padding-top: 4px; }
+  ol button .t { font-weight: 700; }
+  ol button .who { font-size: 11px; color: var(--muted); }
+  ol button[aria-current="true"] { border-color: var(--slime); background: rgba(57, 255, 159, 0.10); }
+  ol button[aria-current="true"] .n { color: var(--slime); }
+  .how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .how div { border-top: 2px solid var(--rule); padding-top: 10px; }
+  .how b { display: block; font-family: var(--display); font-weight: 400; font-size: 10px; color: var(--slime); margin-bottom: 6px; letter-spacing: 1px; }
+  .how p { margin: 0; color: var(--muted); font-size: 13px; }
+  footer { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 14px; }
+  a { color: var(--sun); }
+  @media (max-width: 820px) { .stage, .how { grid-template-columns: 1fr; } }
+</style>
+<div class="wrap">
+  <header>
+    <h1><span class="d">DARWIN</span> <span class="b">BEACH</span> REPLAYS</h1>
+    <p class="tag">Eleven matches from one night of evolution, from a random brain to the best bot of the night. Nothing here is a video: your browser runs the same engine that trained these bots and plays each match from its serve.</p>
+  </header>
+  <div class="stage">
+    <section class="main" aria-labelledby="m-title">
+      <canvas id="court" width="960" height="360" aria-label="The match, played live"></canvas>
+      <div class="controls">
+        <button type="button" id="pause">Pause</button>
+        <button type="button" id="restart">Replay</button>
+        <button type="button" id="speed">1x</button>
+        <button type="button" class="primary" id="next">Next match &rarr;</button>
+        <label><input type="checkbox" id="auto" checked> Play the next one automatically</label>
+      </div>
+      <p class="act" id="m-act"></p>
+      <h2 id="m-title">Loading the engine&hellip;</h2>
+      <p id="m-caption"></p>
+      <div id="verdict" data-kind="playing" aria-live="polite"></div>
+    </section>
+    <nav aria-label="Matches"><ol id="list"></ol></nav>
+  </div>
+  <section class="how" aria-label="How these bots learned">
+    <div><b>RANDOM BRAINS</b><p>Every slime starts with a brain of 515 random numbers. Green plays on the left; pink is the coach, a hand-written bot, or another champion.</p></div>
+    <div><b>THE WINNERS HAVE KIDS</b><p>Good players are copied with small changes or mixed with another good player. Hundreds of millions of matches decide who stays.</p></div>
+    <div><b>EXACT REPLAYS</b><p>A match is just a serve and two brains. Replay it anywhere and it lands on the same fingerprint, or the result does not count.</p></div>
+  </section>
+  <footer>
+    <span>Built in public: <a href="https://github.com/dangoodface/darwin-beach">github.com/dangoodface/darwin-beach</a></span>
+    <span>Physics after slimevolleygym by David Ha.</span>
+  </footer>
+</div>
+<script type="application/json" id="gallery-data">/*GALLERY*/</script>
+<script type="application/octet-stream" id="kernel-b64">/*KERNEL*/</script>
+<script>/*APP*/</script>
