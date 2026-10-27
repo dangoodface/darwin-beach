@@ -206,3 +206,52 @@ once each, never rewritten.
 Not stored. A replay is `(kernel_sha, seed, genome A, genome B)` re-run in
 the browser with the kernel's interactive exports. v0 shows the cell's elite
 against the opponent named in `replay`; v1 lets a visitor pick both.
+
+## Specialists
+
+Added 27 October 2026. A specialist is one genome trained against the real champions with its style forced by
+construction (`python -m arena.specialist`, `src/arena/specialist.py`, `configs/specialists.toml`). Each style has an
+unconstrained twin (`--twin`): same start genome, same seeds, same rivals, no repair, window or extra fitness term.
+`all_rounder` is its own twin and has none.
+
+Files, under `$ARENA_DATA/specialists/<run_id>/` with `run_id = <UTC start>-spec-<style>` and `-twin` appended for a twin:
+
+- `result.json`, below.
+- `genomes/<id>.bin`: the final genome, the start genome and the champion rivals, content-addressed like `out/`.
+- `kernel/<kernel_sha>.wasm`: the kernel the matches were played on. A replay is kernel plus seed plus two ids, as everywhere.
+
+```
+{ "style": "flat_earther", "twin": false,
+  "constraint": {"kind": "pinned_output" | "descriptor_window" | "fitness" | "none", "detail": ...},
+  "start": {"genome_id", "run_id", "cell": [i, j] | null, "reason"},
+  "rivals": [{"id", "kind": "champion" | "coach"}],           // the coach's id is "scripted-v1" (no genome file)
+  "seeds": {"train": {"per_generation": 8, "resampled": ...}, "graded": [u64 ...], "fresh": [u64 ...]},
+  "generations", "matches_total", "elapsed_s", "kernel_sha", "kernel_version",
+  "final": {"genome_id",
+            "graded": {rival_id: {"won", "n", "margin"}},    // the fixed graded seeds, both sides
+            "fresh":  {rival_id: {"won", "n", "margin"}},    // 8 held-out seeds, both sides, n = 16
+            "descriptors_fresh_mean": {name: value},         // the genome's own side, over all fresh matches
+            "constraint_satisfied": bool,
+            "proof": {...},
+            "showcase": [{"seed", "side": "A" | "B", "rival_id", "margin", "descriptors": {name: value}}]},
+  "curve": [{"gen", "t", "fitness_best", "fitness_mean", "margin_by_rival": {rival_id: m}, "constraint_penalty"}] }
+```
+
+Seeds are u64: a decimal string when above 2^53, as in `latest.json`. `won` counts matches with more points for the
+genome than against; "beats the coach" is won above half of n, the page's rule. The fresh seeds are never used in training or
+for the running best. `margin` is points for minus against, mean over the matches. `showcase` lists the two fresh matches
+with the best margin per rival; `side` is the specialist's side, and its `descriptors` are that side's.
+
+`constraint.kind`: `pinned_output` (flat_earther: the jump output's weights are zeroed and its bias is -1, so the button never
+fires; kangaroo: bias +1, always pressed), `descriptor_window` (long_ball, lob_artist, joga_bonito: bounds on the mean
+descriptors; a penalty of `penalty.weight` points per scale-width of violation while training, a strict check on the fresh
+matches at the end), `fitness` (sprinter: margin minus `lambda` times ticks per point; all_rounder: the minimum of the
+per-rival margins), `none` (every twin). `constraint_satisfied` is the strict check: for a pinned output, no fresh match has a
+jump (flat_earther) or every one has at least one (kangaroo); for a window, every bound holds on the fresh mean. It is true
+for styles with no hard constraint. `proof` holds the values behind it: `ticks_per_point` always, `jumps_*` and `airtime`
+for a pinned output, each bounded descriptor's mean with its bounds for a window, `min_margin` for all_rounder.
+`curve` rows describe the best candidate of that generation. Fitness there includes the window penalty.
+
+`joga_bonito` needs the kernel's descriptors 8 and 9 (`juggled_points`, `max_streak`, kernel version 2); on a kernel that reports
+8 the run stops at its start with a message. Its window is juggled points at least a third of points won, and its fitness adds
+`joga.bonus` per juggled point to the margin.
