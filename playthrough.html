@@ -1,0 +1,467 @@
+<title>Arena Playthrough</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  /* Layout: one arcade cabinet column. The map is the hero, the campaign reads top to bottom like a save file.
+     Single committed dark look (CRT arcade), same family as the math-team playthrough. */
+  :root {
+    color-scheme: dark;
+    --bg-0: #06080f;
+    --bg-1: #0c1020;
+    --bg-2: #151b30;
+    --line: #2a3454;
+    --line-hard: #3c4a82;
+    --txt: #e9f3ff;
+    --muted: #8d9cc2;
+    --dim: #56658a;
+    --slime: #39ff9f;     /* our slime */
+    --rival: #ff4fc8;     /* their slime */
+    --sand: #ffc93c;      /* court and ball */
+    --cyan: #3fdcff;
+    --red: #ff4466;
+    --f-display: "Press Start 2P", "Courier New", monospace;
+    --f-term: "VT323", "Courier New", monospace;
+    --f-body: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    --glow-slime: 0 0 10px rgba(57,255,159,.45), 0 0 26px rgba(57,255,159,.15);
+    --glow-sand: 0 0 10px rgba(255,201,60,.4), 0 0 24px rgba(255,201,60,.12);
+    --glow-rival: 0 0 10px rgba(255,79,200,.45), 0 0 26px rgba(255,79,200,.15);
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg-0); color: var(--txt); }
+  body {
+    font-family: var(--f-body); font-size: 14px; line-height: 1.6; margin: 0; overflow-x: hidden;
+  }
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 50;
+    background: repeating-linear-gradient(0deg, transparent 0 2px, rgba(0,0,0,.18) 2px 3px);
+  }
+  .wrap {
+    max-width: 980px; margin: 0 auto;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 28px 64px;
+    display: grid; gap: 44px;
+  }
+  a { color: var(--cyan); }
+  :focus-visible { outline: 2px solid var(--sand); outline-offset: 3px; }
+
+  /* ---------- hero ---------- */
+  .hero { display: grid; gap: 14px; text-align: left; }
+  .pretitle { font-family: var(--f-display); font-size: 10px; letter-spacing: 2px; color: var(--muted); }
+  h1 {
+    font-family: var(--f-display); font-weight: 400; margin: 0;
+    font-size: clamp(26px, 6.4vw, 54px); line-height: 1.15; letter-spacing: 2px;
+    color: var(--slime); text-shadow: var(--glow-slime); text-wrap: balance;
+  }
+  h1 .vs { color: var(--rival); text-shadow: var(--glow-rival); }
+  .subtitle { font-family: var(--f-term); font-size: 23px; line-height: 1.25; color: var(--txt); max-width: 34ch; }
+  .save {
+    font-family: var(--f-term); font-size: 20px; color: var(--sand); text-shadow: var(--glow-sand);
+    display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap;
+  }
+  .blink { animation: blink 1.1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* attract-mode court */
+  .court {
+    position: relative; border: 2px solid var(--line-hard); background: var(--bg-1);
+    box-shadow: inset 0 0 40px rgba(0,0,0,.6);
+  }
+  .court canvas { display: block; width: 100%; height: auto; aspect-ratio: 3 / 1; max-width: 100%; }
+  .court .tag {
+    position: absolute; top: 8px; left: 10px; font-family: var(--f-display); font-size: 8px;
+    letter-spacing: 1.5px; color: var(--dim);
+  }
+
+  /* ---------- section heads ---------- */
+  section { display: grid; gap: 16px; min-width: 0; }
+  h2 {
+    font-family: var(--f-display); font-weight: 400; font-size: 14px; letter-spacing: 2px; margin: 0;
+    color: var(--cyan); display: flex; gap: 12px; align-items: center;
+  }
+  h2::after { content: ""; flex: 1; height: 2px; background: linear-gradient(90deg, var(--line-hard), transparent); }
+  .lede { color: var(--muted); font-size: 13px; margin: 0; max-width: 68ch; }
+
+  /* ---------- the map ---------- */
+  .mapbox { display: grid; grid-template-columns: auto 1fr; gap: 10px 12px; align-items: stretch; }
+  .y-axis {
+    writing-mode: vertical-rl; transform: rotate(180deg); font-family: var(--f-display); font-size: 8px;
+    letter-spacing: 1.5px; color: var(--muted); display: flex; justify-content: space-between;
+  }
+  .grid {
+    display: grid; grid-template-columns: repeat(20, 1fr); gap: 2px;
+    border: 2px solid var(--line-hard); padding: 4px; background: var(--bg-1);
+    aspect-ratio: 1 / 1; max-width: 100%; min-width: 0;
+  }
+  .cell { background: var(--bg-2); border: 1px solid rgba(60,74,130,.35); }
+  .cell.lit { border-color: transparent; }
+  .x-axis {
+    grid-column: 2; font-family: var(--f-display); font-size: 8px; letter-spacing: 1.5px;
+    color: var(--muted); display: flex; justify-content: space-between;
+  }
+  .mapstats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+
+  .stat { border: 1px solid var(--line); background: var(--bg-1); padding: 10px 12px; display: grid; gap: 4px; }
+  .stat .k { font-family: var(--f-display); font-size: 8px; letter-spacing: 1.5px; color: var(--dim); }
+  .stat .v { font-family: var(--f-term); font-size: 24px; line-height: 1; color: var(--txt); font-variant-numeric: tabular-nums; }
+
+  /* ---------- party ---------- */
+  .party { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .char { border: 2px solid var(--line); background: var(--bg-1); padding: 14px; display: grid; gap: 8px; align-content: start; min-width: 0; }
+  .char .name { font-family: var(--f-display); font-size: 11px; letter-spacing: 1.5px; }
+  .char .cls { font-size: 11px; color: var(--muted); letter-spacing: .5px; }
+  .char .row { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; border-top: 1px dashed var(--line); padding-top: 6px; }
+  .char .row span:first-child { color: var(--dim); }
+  .char .row span:last-child { text-align: right; }
+  .char p { margin: 0; font-size: 12px; color: var(--muted); }
+  .char.lead { border-color: var(--sand); box-shadow: var(--glow-sand); }
+  .char.lead .name { color: var(--sand); }
+  .char.player .name { color: var(--slime); }
+  .char.relay .name { color: var(--cyan); }
+  .char.eng .name { color: var(--rival); }
+
+  /* ---------- level map ---------- */
+  .levels { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .lvl { border: 2px solid var(--line); background: var(--bg-1); padding: 12px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+  .lvl .num { font-family: var(--f-display); font-size: 8px; letter-spacing: 1.5px; color: var(--dim); }
+  .lvl .nm { font-family: var(--f-display); font-size: 10px; line-height: 1.5; letter-spacing: 1px; }
+  .lvl .ds { font-size: 12px; color: var(--muted); }
+  .lvl .tg { font-family: var(--f-display); font-size: 8px; letter-spacing: 1.5px; justify-self: start; padding: 4px 6px; }
+  .lvl.cleared { border-color: rgba(57,255,159,.45); }
+  .lvl.cleared .nm { color: var(--slime); }
+  .lvl.cleared .tg { background: var(--slime); color: var(--bg-0); }
+  .lvl.current { border-color: var(--sand); box-shadow: var(--glow-sand); }
+  .lvl.current .nm { color: var(--sand); }
+  .lvl.current .tg { background: var(--sand); color: var(--bg-0); }
+  .lvl.locked { opacity: .55; }
+  .lvl.locked .tg { border: 1px solid var(--dim); color: var(--dim); }
+  .worlds { display: grid; gap: 26px; }
+  .world { display: grid; gap: 10px; }
+  .world-head { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap; }
+  .world-name { font-family: var(--f-display); font-size: 11px; letter-spacing: 1.5px; color: var(--txt); }
+  .world-goal { font-family: var(--f-term); font-size: 19px; color: var(--muted); }
+  .world-prog { margin-left: auto; font-family: var(--f-display); font-size: 8px; letter-spacing: 1.5px; color: var(--slime); }
+  .lvl .ds b { color: var(--txt); font-weight: 500; }
+
+  /* ---------- battle ---------- */
+  .battle { border: 2px solid var(--sand); box-shadow: var(--glow-sand); background: var(--bg-1); padding: 18px; display: grid; gap: 14px; }
+  .boss { font-family: var(--f-display); font-size: clamp(12px, 2.6vw, 17px); line-height: 1.5; letter-spacing: 1px; color: var(--sand); text-shadow: var(--glow-sand); }
+  .flavor { font-family: var(--f-term); font-size: 21px; line-height: 1.3; margin: 0; max-width: 60ch; }
+  .bar { display: grid; gap: 6px; }
+  .bar-label { display: flex; justify-content: space-between; font-family: var(--f-display); font-size: 8px; letter-spacing: 1.5px; color: var(--muted); }
+  .track { height: 14px; border: 2px solid var(--line-hard); background: var(--bg-0); }
+  .fill { height: 100%; background: repeating-linear-gradient(90deg, var(--red) 0 10px, #c4304f 10px 12px); }
+  .fill.slime { background: repeating-linear-gradient(90deg, var(--slime) 0 10px, #23b974 10px 12px); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  .battle .log { font-family: var(--f-term); font-size: 19px; color: var(--sand); margin: 0; display: grid; gap: 2px; }
+
+  /* ---------- skills ---------- */
+  .skills { display: grid; gap: 12px; }
+  .skill { border-left: 3px solid var(--line-hard); padding-left: 14px; display: grid; gap: 6px; min-width: 0; }
+  .skill-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+  .skill-name { font-family: var(--f-display); font-size: 10px; letter-spacing: 1.5px; }
+  .skill-lv { font-family: var(--f-term); font-size: 19px; color: var(--sand); }
+  .skill p { margin: 0; font-size: 12px; color: var(--muted); max-width: 70ch; }
+  .skill .unlock { font-size: 11px; color: var(--dim); }
+
+  /* ---------- achievements ---------- */
+  .ach { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; }
+  .badge { border: 1px solid var(--line); background: var(--bg-1); padding: 12px; display: grid; gap: 6px; align-content: start; position: relative; min-width: 0; }
+  .badge .ic { font-family: var(--f-display); font-size: 10px; color: var(--sand); }
+  .badge .nm { font-family: var(--f-display); font-size: 9px; line-height: 1.5; letter-spacing: 1px; }
+  .badge .ds { font-size: 12px; color: var(--muted); }
+  .badge .ct { position: absolute; top: 10px; right: 12px; font-family: var(--f-term); font-size: 19px; color: var(--slime); }
+  .badge.locked { opacity: .45; border-style: dashed; }
+  .badge.locked .ic { color: var(--dim); }
+  .badge.locked .ct { color: var(--dim); }
+
+  /* ---------- log ---------- */
+  .events { display: grid; gap: 8px; }
+  .ev { display: grid; grid-template-columns: 9.5ch 1fr; gap: 12px; font-size: 13px; }
+  .ev time { font-family: var(--f-term); font-size: 18px; color: var(--dim); line-height: 1.2; }
+  .ev div { min-width: 0; }
+  .ev b { color: var(--txt); font-weight: 500; }
+
+  footer { font-family: var(--f-term); font-size: 19px; color: var(--muted); display: grid; gap: 4px; }
+
+  @media (max-width: 520px) {
+    .ev { grid-template-columns: 1fr; gap: 0; }
+    .subtitle { font-size: 20px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .blink { animation: none; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div class="pretitle">&lt;&lt; EVOLUTION ARENA CAMPAIGN &gt;&gt;</div>
+    <h1>SLIME <span class="vs">VS</span> SLIME</h1>
+    <div class="subtitle">Slimes play volleyball. The winners have kids. A map fills up with every way to play.</div>
+    <div class="save"><span class="blink" aria-hidden="true">&#9654;</span><span id="save-text"></span></div>
+    <div class="court" aria-label="Attract mode animation of two slimes and a ball">
+      <span class="tag">ATTRACT MODE &middot; SCRIPTED, NOT A TRAINED BOT</span>
+      <canvas id="court" width="900" height="300"></canvas>
+    </div>
+  </header>
+
+  <section aria-labelledby="map-h">
+    <h2 id="map-h">THE MAP</h2>
+    <p class="lede">Every cell is a style of play. Left to right: how close to the net the slime plays. Bottom to top: how much time it spends in the air. A cell lights up when evolution finds a bot that plays that way, and glows brighter the better that bot is.</p>
+    <div class="mapbox">
+      <div class="y-axis"><span>GROUNDED</span><span>AIRBORNE</span></div>
+      <div class="grid" id="grid" role="img" aria-label="20 by 20 map of play styles"></div>
+      <div class="x-axis"><span>BASELINE</span><span>NET</span></div>
+    </div>
+    <div class="mapstats" id="mapstats"></div>
+  </section>
+
+  <section aria-labelledby="party-h">
+    <h2 id="party-h">THE PARTY</h2>
+    <div class="party" id="party"></div>
+  </section>
+
+  <section aria-labelledby="lv-h">
+    <h2 id="lv-h">THE ROAD</h2>
+    <p class="lede">What we build, in order. Each level is one piece, and it only clears when a test proves it works.</p>
+    <div class="worlds" id="levels"></div>
+  </section>
+
+  <section aria-labelledby="battle-h">
+    <h2 id="battle-h">CURRENT BATTLE</h2>
+    <div class="battle" id="battle"></div>
+  </section>
+
+  <section aria-labelledby="skill-h">
+    <h2 id="skill-h">PLAYER SKILL TREE</h2>
+    <p class="lede">What Player 1 learns by building this. Every skill starts at zero and only levels up when the arena proves it.</p>
+    <div class="skills" id="skills"></div>
+  </section>
+
+  <section aria-labelledby="ach-h">
+    <h2 id="ach-h">ACHIEVEMENTS</h2>
+    <div class="ach" id="ach"></div>
+  </section>
+
+  <section aria-labelledby="log-h">
+    <h2 id="log-h">CAMPAIGN LOG</h2>
+    <div class="events" id="events"></div>
+  </section>
+
+  <footer>
+    <div>&gt; Built on Daniel's PC in Mexico City. Updated by the party as levels clear.</div>
+    <div>&gt; SAVE. CONTINUE. <span class="blink" aria-hidden="true">&#9646;</span></div>
+  </footer>
+</div>
+
+<!-- The party edits this block as the campaign moves. Everything above renders from it. -->
+<script id="state" type="application/json">
+{
+  "save": "SAVE POINT · CHAPTER 0 · PREFLIGHT CLEARED · 26 OCT 2026",
+  "map": { "size": 20, "lit": [], "qd_score": null, "champion_elo": null, "generation": 0 },
+  "party": [
+    { "cls": "player", "name": "PLAYER_1", "klass": "DIRECTOR", "rows": [["WHO", "Daniel"], ["SETS", "The bar, not the tactic"], ["MOVE", "\"Good or none at all\""]],
+      "text": "Picked the arena out of twenty ideas. Wants something people can watch, and to learn ML optimization by building it." },
+    { "cls": "lead", "name": "FABLE", "klass": "PARTY LEADER · ARCHITECT", "rows": [["ROLE", "Plans and coordinates"], ["DESIGN", "Rust kernel in WebAssembly"], ["MOVE", "\"Same bytes, both sides\""]],
+      "text": "Wrote the step 0 plan: one simulator for training and the browser, a frozen ladder, append-only store. Hands out the work." },
+    { "cls": "eng", "name": "OPUS", "klass": "ENGINEER", "rows": [["ROLE", "Builds what Fable assigns"], ["IDEA", "Anchor ratings to fixed bots"], ["MOVE", "\"Find the gen where humans stop winning\""]],
+      "text": "Proposed the human wall and the 55 percent promotion gate. Awaiting first assignment." },
+    { "cls": "eng", "name": "SONNET", "klass": "ENGINEER", "rows": [["ROLE", "Builds what Fable assigns"], ["IDEA", "Replays are seed plus ids"], ["MOVE", "\"Viewers become players\""]],
+      "text": "Proposed tiny deterministic replays and the play-the-champion hook. Awaiting first assignment." },
+    { "cls": "relay", "name": "FUNSIES", "klass": "RELAY · ANALYST", "rows": [["ROLE", "Routes Daniel and the party"], ["CHECKS", "Machine, tools, data"], ["MOVE", "\"Verify before the pitch\""]],
+      "text": "Ran the idea rounds, wrote the preflight, verified the GPU and the toolchain. Carries every decision to Daniel." }
+  ],
+  "levels": [
+    { "n": 1, "name": "Tutorial", "desc": "The idea draft. Twenty ideas from four sessions, three rounds, one pick.", "state": "cleared" },
+    { "n": 2, "name": "Side Quests", "desc": "Preflight. CPU, RAM, GPU, Rust, wasmtime and Node checked on the real machine.", "state": "cleared" },
+    { "n": 3, "name": "First Boss: The Parity Golem", "desc": "1,000 seeded matches give identical state hashes in Python and in Node.", "state": "current" },
+    { "n": 4, "name": "The Bench", "desc": "At least 1,000 full matches a second on 15 workers, under the memory cap.", "state": "locked" },
+    { "n": 5, "name": "Miniboss: First Light", "desc": "A one-hour MAP-Elites run lights the map and reproduces bit for bit from its seed.", "state": "locked" },
+    { "n": 6, "name": "The Ladder", "desc": "Frozen anchors, eras, and the first promotion at 55 percent over 100 matches.", "state": "locked" },
+    { "n": 7, "name": "End Boss: The Human Wall", "desc": "Visitors play any cell. The page finds the generation where humans stop winning.", "state": "locked" },
+    { "n": 8, "name": "Post-Game", "desc": "A second arena (sumo, racing, Core War) plugs into the same kernel interface.", "state": "locked" }
+  ],
+  "battle": {
+    "boss": "THE PARITY GOLEM",
+    "flavor": "Two machines run the same match. If one decimal differs on tick 2,999, the golem wins. The only weapon is running the same bytes on both sides.",
+    "hp": 100,
+    "status": "NOT ENGAGED · WAITING FOR FABLE'S PLAN",
+    "stats": [["SEEDS IDENTICAL", "0 / 1,000"], ["KERNEL", "not built"], ["MATCHES / SEC", "—"], ["NaN SEEN", "—"]],
+    "log": ["> The golem waits at the gate.", "> Known weaknesses: no tanh, integer ticks, one RNG inside the kernel."]
+  },
+  "skills": [
+    { "name": "QUALITY-DIVERSITY (MAP-ELITES)", "lv": 0, "desc": "Keep the best bot for every style instead of one champion, so the search never collapses into a single strategy.", "unlock": "Levels up at First Light" },
+    { "name": "EVOLUTION STRATEGIES", "lv": 0, "desc": "Estimate which way is better from random nudges, no backprop. OpenAI-ES, then CMA-ES.", "unlock": "Levels up when one cell is trained as a specialist" },
+    { "name": "EMITTERS (CMA-ME)", "lv": 0, "desc": "Smarter ways to propose new bots. Measured by how much faster the same map fills.", "unlock": "Levels up when the CMA-ME tab beats plain MAP-Elites" },
+    { "name": "DETERMINISM AND PARITY", "lv": 0, "desc": "Why tanh, fused multiply-add and summation order break replays, and how one WebAssembly file fixes it.", "unlock": "Levels up when the Parity Golem falls" },
+    { "name": "HONEST RATINGS", "lv": 0, "desc": "Frozen ladders, Elo against fixed anchors, cycle detection. How to keep a rising curve from lying.", "unlock": "Levels up at the first promotion" }
+  ],
+  "achievements": [
+    { "icon": "[ 20 ]", "name": "The Idea Draft", "desc": "Twenty arena ideas from four sessions across three rounds.", "count": "×20", "locked": false },
+    { "icon": "[ 4/4 ]", "name": "Convergence", "desc": "All four sessions independently proposed code evolution and a MAP-Elites map.", "count": "4/4", "locked": false },
+    { "icon": "[ GPU ]", "name": "Card Online", "desc": "PyTorch 2.11 with CUDA 12.8 sees the RTX 5060. Not needed until later levels.", "count": "✓", "locked": false },
+    { "icon": "[ RS ]", "name": "Toolchain Ready", "desc": "Rust 1.95, wasmtime for Python 3.13, Node 24 on the machine.", "count": "✓", "locked": false },
+    { "icon": "[ =  ]", "name": "Same Bytes", "desc": "Design adopted: one simulator compiled to WebAssembly, run in training and in the browser.", "count": "✓", "locked": false },
+    { "icon": "[ LT ]", "name": "First Light", "desc": "The first cell of the map lights up.", "count": "0", "locked": true },
+    { "icon": "[ OK ]", "name": "Verified Replay", "desc": "A replay in the browser lands on the stored final hash.", "count": "0", "locked": true },
+    { "icon": "[ UP ]", "name": "First Promotion", "desc": "A bot beats the champion 55 times in 100.", "count": "0", "locked": true },
+    { "icon": "[ 50 ]", "name": "Half the Map", "desc": "200 of 400 styles found.", "count": "0", "locked": true },
+    { "icon": "[ GG ]", "name": "Humans Lose", "desc": "A generation that visitors can no longer beat.", "count": "0", "locked": true }
+  ],
+  "events": [
+    { "t": "26 OCT", "text": "<b>Lead handed to Fable.</b> Fable coordinates the build and leans on Opus and Sonnet. Daniel talks to the party through Funsies." },
+    { "t": "26 OCT", "text": "<b>Step 0 merged.</b> Fable's Rust to WebAssembly kernel adopted. Work cut into v0 (the map fills), v1 (honest and playable), v2 (learning tabs)." },
+    { "t": "26 OCT", "text": "<b>Arena picked.</b> Slime volleyball plus the map that fills. AlphaZero out: nobody plays Connect Four." },
+    { "t": "26 OCT", "text": "<b>Preflight.</b> 16 threads, 23 GB free, RTX 5060 working with PyTorch, R2 reachable, Rust and wasmtime ready." }
+  ]
+}
+</script>
+
+<script>
+(function () {
+  var S = JSON.parse(document.getElementById('state').textContent);
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  document.getElementById('save-text').textContent = S.save;
+
+  // map
+  var n = S.map.size, grid = document.getElementById('grid'), lit = {};
+  (S.map.lit || []).forEach(function (c) { lit[c.x + ',' + c.y] = c.q; });
+  for (var y = n - 1; y >= 0; y--) for (var x = 0; x < n; x++) {
+    var c = el('div', 'cell'), q = lit[x + ',' + y];
+    if (q != null) { c.className = 'cell lit'; c.style.background = 'rgba(57,255,159,' + (0.25 + 0.75 * q).toFixed(2) + ')'; }
+    grid.appendChild(c);
+  }
+  var litCount = Object.keys(lit).length;
+  [['CELLS LIT', litCount + ' / ' + (n * n)], ['GENERATION', S.map.generation],
+   ['QD-SCORE', S.map.qd_score == null ? '—' : S.map.qd_score],
+   ['CHAMPION ELO', S.map.champion_elo == null ? '—' : S.map.champion_elo]].forEach(function (p) {
+    var s = el('div', 'stat'); s.appendChild(el('div', 'k', esc(p[0]))); s.appendChild(el('div', 'v', esc(p[1])));
+    document.getElementById('mapstats').appendChild(s);
+  });
+
+  // party
+  S.party.forEach(function (m) {
+    var c = el('div', 'char ' + m.cls);
+    c.appendChild(el('div', 'name', esc(m.name)));
+    c.appendChild(el('div', 'cls', esc(m.klass)));
+    m.rows.forEach(function (r) { c.appendChild(el('div', 'row', '<span>' + esc(r[0]) + '</span><span>' + esc(r[1]) + '</span>')); });
+    c.appendChild(el('p', null, esc(m.text)));
+    document.getElementById('party').appendChild(c);
+  });
+
+  // the road: worlds of levels
+  var tags = { cleared: 'CLEARED', current: 'YOU ARE HERE', locked: 'LOCKED' };
+  S.worlds.forEach(function (w, wi) {
+    var box = el('div', 'world');
+    var done = w.levels.filter(function (l) { return l.state === 'cleared'; }).length;
+    box.appendChild(el('div', 'world-head',
+      '<span class="world-name">WORLD ' + wi + ' · ' + esc(w.name) + '</span>' +
+      '<span class="world-goal">' + esc(w.goal) + '</span>' +
+      '<span class="world-prog">' + done + ' / ' + w.levels.length + '</span>'));
+    var row = el('div', 'levels');
+    w.levels.forEach(function (l, li) {
+      var c = el('div', 'lvl ' + l.state);
+      c.appendChild(el('div', 'num', 'LV. ' + wi + '-' + (li + 1)));
+      c.appendChild(el('div', 'nm', esc(l.name)));
+      c.appendChild(el('div', 'ds', esc(l.desc)));
+      c.appendChild(el('div', 'ds', '<b>Clears when:</b> ' + esc(l.test)));
+      c.appendChild(el('div', 'tg', tags[l.state]));
+      row.appendChild(c);
+    });
+    box.appendChild(row);
+    document.getElementById('levels').appendChild(box);
+  });
+
+  // battle
+  var B = S.battle, b = document.getElementById('battle');
+  b.appendChild(el('div', 'boss', esc(B.boss)));
+  b.appendChild(el('p', 'flavor', esc(B.flavor)));
+  var bar = el('div', 'bar');
+  bar.appendChild(el('div', 'bar-label', '<span>BOSS HP</span><span>' + B.hp + ' / 100 · ' + esc(B.status) + '</span>'));
+  var tr = el('div', 'track'), f = el('div', 'fill' + (B.hp === 0 ? ' slime' : ''));
+  f.style.width = (B.hp === 0 ? 100 : B.hp) + '%'; tr.appendChild(f); bar.appendChild(tr); b.appendChild(bar);
+  var st = el('div', 'stats');
+  B.stats.forEach(function (p) { var s = el('div', 'stat'); s.appendChild(el('div', 'k', esc(p[0]))); s.appendChild(el('div', 'v', esc(p[1]))); st.appendChild(s); });
+  b.appendChild(st);
+  var lg = el('p', 'log'); B.log.forEach(function (line) { lg.appendChild(el('span', null, esc(line))); }); b.appendChild(lg);
+
+  // skills
+  S.skills.forEach(function (k) {
+    var s = el('div', 'skill');
+    var stars = ''; for (var i = 0; i < 5; i++) stars += i < k.lv ? '★' : '☆';
+    s.appendChild(el('div', 'skill-head', '<span class="skill-name">' + esc(k.name) + '</span><span class="skill-lv">LV. ' + k.lv + ' / 5 ' + stars + '</span>'));
+    var t = el('div', 'track'), fl = el('div', 'fill slime'); fl.style.width = (k.lv * 20) + '%'; t.appendChild(fl); s.appendChild(t);
+    s.appendChild(el('p', null, esc(k.desc)));
+    s.appendChild(el('div', 'unlock', esc(k.unlock)));
+    document.getElementById('skills').appendChild(s);
+  });
+
+  // achievements
+  S.achievements.forEach(function (a) {
+    var c = el('div', 'badge' + (a.locked ? ' locked' : ''));
+    c.appendChild(el('span', 'ct', esc(a.count)));
+    c.appendChild(el('div', 'ic', esc(a.icon)));
+    c.appendChild(el('div', 'nm', esc(a.name)));
+    c.appendChild(el('div', 'ds', esc(a.desc)));
+    document.getElementById('ach').appendChild(c);
+  });
+
+  // log (event text may carry <b> from the state block, written by the party)
+  S.events.forEach(function (e) {
+    var r = el('div', 'ev'); r.appendChild(el('time', null, esc(e.t))); r.appendChild(el('div', null, e.text));
+    document.getElementById('events').appendChild(r);
+  });
+
+  // attract mode: a scripted rally, drawn on a fixed 900x300 canvas
+  var cv = document.getElementById('court'), ctx = cv.getContext('2d');
+  var W = 900, H = 300, G = 262, NET = 450;
+  var css = getComputedStyle(document.documentElement);
+  var C = { slime: css.getPropertyValue('--slime').trim(), rival: css.getPropertyValue('--rival').trim(),
+            sand: css.getPropertyValue('--sand').trim(), line: css.getPropertyValue('--line-hard').trim(),
+            dim: css.getPropertyValue('--dim').trim() };
+  var ball = { x: 220, y: 80, vx: 3.2, vy: 0 }, L = { x: 220, y: G, vy: 0 }, R = { x: 680, y: G, vy: 0 };
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function slime(p, col, faceRight) {
+    ctx.fillStyle = col; ctx.beginPath(); ctx.arc(p.x, p.y, 38, Math.PI, 0); ctx.closePath(); ctx.fill();
+    var ex = p.x + (faceRight ? 16 : -16), ey = p.y - 20;
+    ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(ex, ey, 7, 0, 7); ctx.fill();
+    var dx = ball.x - ex, dy = ball.y - ey, d = Math.sqrt(dx * dx + dy * dy) || 1;
+    ctx.fillStyle = '#05070d'; ctx.beginPath(); ctx.arc(ex + 3 * dx / d, ey + 3 * dy / d, 3.2, 0, 7); ctx.fill();
+  }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = C.line; ctx.fillRect(0, G, W, 3); ctx.fillRect(NET - 3, G - 70, 6, 70);
+    ctx.fillStyle = C.dim; for (var i = 0; i < W; i += 30) ctx.fillRect(i, G + 12, 14, 2);
+    slime(L, C.slime, true); slime(R, C.rival, false);
+    ctx.fillStyle = C.sand; ctx.shadowColor = C.sand; ctx.shadowBlur = 14;
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, 11, 0, 7); ctx.fill(); ctx.shadowBlur = 0;
+  }
+  function track(p, lo, hi) {
+    var target = Math.min(hi, Math.max(lo, ball.x)); p.x += Math.max(-4.2, Math.min(4.2, target - p.x));
+    if (p.y >= G && Math.abs(ball.x - p.x) < 70 && ball.y > 150 && ball.vy > 0) p.vy = -9;
+    p.vy += 0.55; p.y += p.vy; if (p.y > G) { p.y = G; p.vy = 0; }
+  }
+  function step() {
+    ball.vy += 0.28; ball.x += ball.vx; ball.y += ball.vy;
+    if (ball.x < 11 || ball.x > W - 11) ball.vx *= -1;
+    if (Math.abs(ball.x - NET) < 14 && ball.y > G - 70) { ball.vx *= -1; ball.x += ball.vx * 2; }
+    track(L, 40, NET - 45); track(R, NET + 45, W - 40);
+    [L, R].forEach(function (p) {
+      var dx = ball.x - p.x, dy = ball.y - p.y, d = Math.sqrt(dx * dx + dy * dy);
+      if (d < 49 && dy < 0) {
+        var nx = dx / d, ny = dy / d, sp = 10.5;
+        ball.x = p.x + nx * 50; ball.y = p.y + ny * 50;
+        ball.vx = nx * sp + (p === L ? 2.4 : -2.4); ball.vy = Math.min(-7.5, ny * sp);
+      }
+    });
+    if (ball.y > G - 11) { ball.x = Math.random() < 0.5 ? 220 : 680; ball.y = 70; ball.vx = ball.x < NET ? 3.2 : -3.2; ball.vy = 0; }
+  }
+  draw();
+  if (!reduce) (function loop() { step(); draw(); requestAnimationFrame(loop); })();
+})();
+</script>

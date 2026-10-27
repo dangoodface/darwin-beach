@@ -1,0 +1,12 @@
+.venv/
+__pycache__/
+*.pyc
+kernel/target/
+node_modules/
+web/dist/
+out/
+tmp/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.pytest_cache/
