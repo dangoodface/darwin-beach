@@ -1,0 +1,44 @@
+# Night run 4 (27 October 2026, about 05:10): the optimiser A/B. Run 3's rules (eight seeds per
+# probe, grid, batch, workers) with CMA-ME in place of the hand-written MAP-Elites: four CMA-ES
+# emitters through pyribs, 16 proposals each a generation, so a generation plays as many matches as
+# run 3's. A fresh seed draws its own three frozen rivals and evaluation seeds, so fitness and
+# QD-score are measured against different rivals than run 3's; scripted-v1, the coach, is the
+# yardstick both runs share. Seed 20261029 would give identical rivals, seeds and first generations.
+slug = "night-r4-cma"
+seed = 20261030
+
+[sim]
+kind = "kernel"
+kernel_path = "artifacts/kernel/5487b2a61f66880a4bd468957b6f662cb0f5afd05ab8ae7ac6736a81b025674a.wasm"
+max_ticks = 3000
+
+[grid]
+descriptors = ["court_position", "airtime"]
+indices = [0, 1]             # positions in the ABI descriptor block
+bounds = [[0.0, 1.0], [0.0, 1.0]]
+resolution = [20, 20]
+qd_offset = 5.0
+lit_floor = 0.0              # a cell lights on the page once its elite's fitness (margin against the rivals) reaches this              # fitness is a margin of about -5..5; this keeps QD-score monotone
+
+[optim]
+kind = "cma_me"              # the only change from run 3 apart from the seed
+emitters = 4                 # 4 emitters x 16 proposals = batch_size
+sigma0 = 0.1                 # each emitter's starting step size, MAP-Elites' mutation sigma
+es = "cma_es"                # full-covariance CMA-ES, as in Fontaine et al. 2020
+batch_size = 64              # candidates per generation
+init_size = 100              # random genomes until this many cells are filled
+sigma = 0.1                  # MAP-Elites only; unused here
+crossover_frac = 0.5         # MAP-Elites only; unused here
+
+[workers]
+count = 8                    # 8 cores: 8 workers give 97% of 15 and leave the rest to the loop (make bench, 26 October 2026)
+jobs_per_task = 128          # at most the kernel's batch_capacity (256)
+
+[eval]
+probe_count = 3              # frozen generation-zero genomes after scripted-v1
+seeds_per_probe = 8          # each seed is played on both sides: 16 matches against the coach per candidate
+scripted_probe = true
+
+[export]
+every_s = 60
+tree_full_every_s = 3600
