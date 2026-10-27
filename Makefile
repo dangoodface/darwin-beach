@@ -1,11 +1,12 @@
 # Five commands for the arena. `make help` lists them.
-.PHONY: help test train upload dev verify kernel parity bench
+.PHONY: help test train practice upload dev verify kernel parity bench
 
 WASM := kernel/target/wasm32-unknown-unknown/release/slime_kernel.wasm
 
 help:
 	@echo "make test      Python tests"
-	@echo "make train     practice run on the pretend game (200 generations)"
+	@echo "make train     the real run on the kernel, one hour, under the training limits (SECONDS=... to change)"
+	@echo "make practice  practice run on the pretend game (200 generations)"
 	@echo "make upload    dry-run mirror of out/ into ~/.local/share/arena/mirror"
 	@echo "make verify    re-run every live cell's replay and compare hashes: make verify RUN=<run_id>"
 	@echo "make dev       the page (placeholder until web/ exists)"
@@ -16,9 +17,14 @@ help:
 test:
 	uv run pytest -q
 
+SECONDS ?= 3600
 train:
 	systemd-run --user --scope -q -p MemoryMax=4G -p CPUQuota=1400% \
-	  uv run python -m arena.run --config configs/slime-v0.toml --generations 200
+	  uv run python -m arena.run --config configs/slime-v0.toml --max-seconds $(SECONDS)
+
+practice:
+	systemd-run --user --scope -q -p MemoryMax=4G -p CPUQuota=1400% \
+	  uv run python -m arena.run --config configs/practice-fake.toml --generations 200
 
 upload:
 	uv run python tools/upload.py --to $${ARENA_DATA:-$$HOME/.local/share/arena}/mirror

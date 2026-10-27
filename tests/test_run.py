@@ -25,9 +25,12 @@ def _fingerprint(ctx):
     return [(k, e.genome.id, e.fitness, e.bd) for k, e in ctx.archive.cells().items()]
 
 
-def test_config_file_loads():
-    cfg = load_config("configs/slime-v0.toml")
-    assert cfg.resolution == (20, 20) and cfg.workers == 15 and cfg.sim_kind == "fake"
+def test_config_files_load():
+    real = load_config("configs/slime-v0.toml")
+    assert real.resolution == (20, 20) and real.workers == 8 and real.sim_kind == "kernel"
+    assert real.kernel_path.startswith("artifacts/kernel/") and real.scripted_probe
+    practice = load_config("configs/practice-fake.toml")
+    assert practice.resolution == (20, 20) and practice.sim_kind == "fake"
 
 
 def test_run_fills_and_notifies():

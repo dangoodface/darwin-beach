@@ -1,35 +1,36 @@
-# Step 0 run: MAP-Elites over court position and airtime, fitness against a fixed probe set.
+# The v0 run: MAP-Elites over court position and airtime on the real game,
+# fitness as score margin against the probe set (scripted-v1 plus three frozen
+# generation-zero genomes), both sides, four seeds each.
 slug = "slime-v0"
 seed = 20261027
 
 [sim]
-kind = "fake"            # "fake" until the Rust kernel lands, then "kernel"
-kernel_path = ""         # artifacts/kernel/<sha256>.wasm when kind = "kernel"
+kind = "kernel"
+kernel_path = "artifacts/kernel/5487b2a61f66880a4bd468957b6f662cb0f5afd05ab8ae7ac6736a81b025674a.wasm"
 max_ticks = 3000
 
 [grid]
 descriptors = ["court_position", "airtime"]
-indices = [0, 1]         # positions in the ABI descriptor block
+indices = [0, 1]             # positions in the ABI descriptor block
 bounds = [[0.0, 1.0], [0.0, 1.0]]
 resolution = [20, 20]
-qd_offset = 5.0          # fitness is a margin of about -5..5; this keeps QD-score monotone
+qd_offset = 5.0              # fitness is a margin of about -5..5; this keeps QD-score monotone
 
 [optim]
-batch_size = 64          # candidates per generation
-init_size = 100          # random genomes until this many cells are filled
+batch_size = 64              # candidates per generation
+init_size = 100              # random genomes until this many cells are filled
 sigma = 0.1
 crossover_frac = 0.5
 
 [workers]
-count = 15
-jobs_per_task = 128      # at most the kernel's batch_capacity (256)
+count = 8                    # 8 cores: 8 workers give 97% of 15 and leave the rest to the loop (make bench, 27 October 2026)
+jobs_per_task = 128          # at most the kernel's batch_capacity (256)
 
 [eval]
-scripted_probe = true    # the kernel's scripted bot ("scripted-v1") is probe 0
-probe_count = 3          # then this many frozen generation-zero genomes, drawn from the run seed
-seeds_per_probe = 4      # each seed is played on both sides
-# eval_seeds = [ ... ]   # optional; otherwise drawn from the run seed and recorded in the store
+probe_count = 3              # frozen generation-zero genomes after scripted-v1
+seeds_per_probe = 4          # each seed is played on both sides
+scripted_probe = true
 
 [export]
 every_s = 60
-tree_full_every_s = 3600   # tree-full.json grows without bound: written at the end and at most this often
+tree_full_every_s = 3600
