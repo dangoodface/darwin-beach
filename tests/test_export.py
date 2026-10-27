@@ -86,8 +86,8 @@ def test_curve_json(exported):
     pts = d["points"]
     assert d["run_id"] == ctx.run_id and [p["gen"] for p in pts] == list(range(50))
     assert all(0 <= p["lit"] <= p["filled"] for p in pts) and pts[-1]["lit"] == d_lit_expected(ctx)
-    assert set(pts[0]) == {"gen", "t", "filled", "lit", "qd_score", "champion_rating", "best_fitness",
-                           "era", "matches_total"}
+    assert set(pts[0]) == {"gen", "t", "filled", "lit", "beats_coach", "qd_score", "champion_rating",
+                           "best_fitness", "era", "matches_total"}
     assert all(b["filled"] >= a["filled"] and b["qd_score"] >= a["qd_score"] - 1e-9
                for a, b in zip(pts, pts[1:]))
 
