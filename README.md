@@ -61,7 +61,7 @@ overrides `kernel/rust-toolchain.toml`. Every game file the arena has used
 stays in `artifacts/kernel/`, named by its sha256; version 1 is
 `5487b2a6…` (the full sha is in that folder's README).
 
-Speed on 27 October 2026 (Ryzen 7 5700X, 8 cores and 16 threads; MemoryMax
+Speed on 26 October 2026 (Ryzen 7 5700X, 8 cores and 16 threads; MemoryMax
 4G, CPUQuota 1400%; batches of 100 matches), from `make bench`:
 
 | Full matches a second | 1 process | 8 processes | 15 processes |
