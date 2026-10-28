@@ -111,6 +111,7 @@ their official ratings are in `$ARENA_DATA/official/oracle/rung-<i>-5c7bcacc.jso
   every call, so the page can show a rung moving but cannot replay a rung's
   match tick for tick.
 
+Holds and the oracle (28 October 2026): an oracle side must always play at hold 1. The oracle counts controller calls as ticks (its history, its delay and its plan), so at a hold above 1 it replans on every call and holds the first planned action, a different bot from the rated rungs. Ladder matches and the specialists' rivals play at hold 1; only a specialist candidate ever carries a hold.
 ## Exports
 
 Constants
