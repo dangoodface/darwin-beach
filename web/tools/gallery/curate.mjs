@@ -13,6 +13,7 @@ const RUN = {
   r3: "20261027T085957Z-night-r3",
   r4: "20261027T110547Z-night-r4-cma",
   r5: "20261027T130856Z-night-r5-ladder",
+  r6: "20261028T001309Z-run6-definitive",
 };
 const COACH = "scripted-v1";
 const latest = Object.fromEntries(Object.entries(RUN).map(([k, d]) => [k, JSON.parse(readFileSync(join(OUT, d, "latest.json"), "utf8"))]));
@@ -237,6 +238,33 @@ for (const style of Object.keys(STYLES)) {
   add({ act: 4, title, left: a ? meSide : them, right: a ? them : meSide, caption: `${blurb} Trained 20 minutes against three rivals. ${rec}${proof}${hof}${twinNote}` },
     { l: a ? `spec:${main}` : rivalRun, r: a ? rivalRun : `spec:${main}` }, a ? r.final.genome_id : show.rival_id, a ? show.rival_id : r.final.genome_id, BigInt(show.seed), () => ({}));
 }
+
+// ---------- act 5: the definitive player? ----------
+// Run 6 evolved against everyone above, weighted by rating; then all 30 bots played a round robin
+// on 32 serves the run never used. These matches use those held-out serves.
+const def = JSON.parse(readFileSync(join(OUT, RUN.r6, "definitive.json"), "utf8"));
+const DEF_SEEDS = def.seeds.map(BigInt);
+const lb = def.leaderboard, byLabel = (l) => lb.find((e) => e.label === l);
+const king = lb[0], lob = byLabel("lob artist"), coachE = byLabel("the coach");
+const exploit = lb.find((e) => e.kind === "elite"), elite6 = lb.find((e) => e.label.startsWith("run 6 elite #6"));
+const shortName = (e) => e.kind === "scripted" ? "COACH" : e.label.replace(/^run 6 elite (#\d).*/, "RUN 6 $1").replace(/^run 5 champion /, "CHAMP ").toUpperCase();
+const side = (e) => ({ label: shortName(e), kind: e.kind === "scripted" ? "coach" : "bot" });
+const rec5 = (e) => def.top.record[e.id];
+const board = lb.map((e) => ({ rank: e.rank, label: e.label, rating: Math.round(e.rating) }));
+// The verdict's grid: a's share of 64 held-out matches against b, a tie counting half.
+const ix = (e) => def.matrix.ids.indexOf(e.id), wr = (a, b) => def.matrix.winrate[ix(a)][ix(b)];
+const pc = (x) => `${Math.round(100 * x)} per cent`;
+const beats = (a) => lb.filter((b) => b.id !== a.id && wr(a, b) > 0.5).length;
+function act5(title, a, b, caption, wantLeftWin, extra = {}) {
+  const g = record("r6", a.id, "r6", b.id, DEF_SEEDS);
+  add({ act: 5, title, left: side(a), right: side(b), caption: caption(g) }, "r6", a.id, b.id, typical(g.games, wantLeftWin), () => extra);
+}
+const champ10 = byLabel("run 5 champion #10");
+const TIE = " (64 matches on serves nobody trained on, a tie counting half)";
+act5("The king", king, champ10, () => `Rank 1 of ${lb.length} by Elo, ${Math.round(king.rating)}: the Flat-Earther's twin. Run 6 played 111 million matches trying to dethrone it, and no challenger passed all three gates. It beats ${beats(king)} of the other ${lb.length - 1}, the coach and last night's best among them, every match. Here it plays last night's best. The full leaderboard is below: green is run 6's new brains.`, true, { board });
+act5("The king has a weakness", lob, king, () => `The Lob Artist, rank 2, takes ${pc(wr(lob, king))} against the king${TIE}. Their matches are long: this one runs to the time limit. It beats ${beats(lob)} of the other ${lb.length - 1}, more than anyone, so by robustness it is the better player.`, true);
+act5("Rock, paper, scissors", elite6, king, () => `Run 6's sixth-best brain ranks ${elite6.rank}th of ${lb.length}, yet it takes ${pc(wr(elite6, king))} against the king${TIE}. At the top nobody beats everyone: just cycles.`, true);
+act5("The exploit", exploit, coachE, (g) => `Run 6's highest scorer ranks ${exploit.rank}th: it beats the specialists more often than not, and against the coach it takes ${pc(wr(exploit, coachE))}${TIE}. The fitness weighted each rival by its rating, which made the coach worth a twelfth of the king, so evolution learned to ignore it. The promotion gate caught it.`, false);
 
 const args = process.argv.slice(2);
 const out = args[args.indexOf("--out") + 1] ?? "gallery.json";
