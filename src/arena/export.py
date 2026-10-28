@@ -228,6 +228,9 @@ def export_run(
     glen = run["genome_len"]
     for gid in sorted(want):
         data = store.params(gid)
+        if data is None:  # a long run must not die on one missing genome; say so and go on
+            print(f"export: no parameters stored for {gid[:8]}, its file is skipped", flush=True)
+            continue
         assert len(data) == glen * 4, f"genome {gid} has {len(data)} bytes, expected {glen * 4}"
         _write_once(out / "genomes" / f"{gid}.bin", data)
 

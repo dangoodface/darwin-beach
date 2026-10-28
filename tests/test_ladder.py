@@ -363,6 +363,7 @@ def test_run6_config_round_trips_its_pool():
 def test_inbox_newcomers_join_the_ladder_rated_and_the_archive_is_rescored(tmp_path, monkeypatch):
     """28 October: a genome dropped in runs/<id>/inbox joins the ladder as an exploiter, frozen at its rating
     against the members, the era advances, the archive is re-scored, and the store and export carry it."""
+    import numpy as np
     from arena.run import make_run_id
 
     monkeypatch.setenv("ARENA_DATA", str(tmp_path))
@@ -375,7 +376,8 @@ def test_inbox_newcomers_join_the_ladder_rated_and_the_archive_is_rescored(tmp_p
     run_id = make_run_id("inbox-run", NOW)
     box = tmp_path / "runs" / run_id / "inbox"
     box.mkdir(parents=True)
-    shutil.copy(out / "genomes" / f"{cells[1]['genome_id']}.bin", box / "exploiter-1.bin")
+    glen = len(np.fromfile(out / "genomes" / f"{cells[1]['genome_id']}.bin", dtype="<f4"))
+    np.random.default_rng(7).standard_normal(glen).astype("<f4").tofile(box / "exploiter-1.bin")  # new to every store
     rec, so2 = Rec(), StoreObserver(tmp_path)
     ctx = run(_cfg(slug="inbox-run", ladder_pool=pool, ladder_fitness="softmin", ladder_coach_gate=True, inbox_every=2),
               [so2, ExportObserver(so2, 0.0, tmp_path), rec], generations=4, now=NOW)
@@ -391,3 +393,4 @@ def test_inbox_newcomers_join_the_ladder_rated_and_the_archive_is_rescored(tmp_p
     assert lad["members"][-1]["label"] == "exploiter-1" and lad["members"][-1]["id"] == m.id
     w = lad["matrix"]["winrate"]
     assert w[2][0] is not None and w[2][1] is not None  # its blocks against the anchor and the pool member
+    assert (tmp_path / "out" / run_id / "genomes" / f"{m.id}.bin").exists()  # the store kept its genome for the page

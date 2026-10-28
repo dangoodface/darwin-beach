@@ -181,6 +181,7 @@ class Store:
         re-scored archive once, unless a promotion this generation already wrote it. Returns the new era."""
         gen = info.generation
         for m, vs in info.joined:
+            self._genome(ctx, m.genome, "exploiter", m.since_era)  # new to the store: the exporter needs its params
             self.db.execute("INSERT INTO ladder_members VALUES (?,?,?,?,?,?,?,?,?)",
                             (ctx.run_id, m.since_era, ctx.kernel_sha, gen, m.id, m.kind, m.rating, None, m.label))
             for p in vs:
