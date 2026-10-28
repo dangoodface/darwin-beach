@@ -89,6 +89,28 @@ state block's `tick` before the step). Holds are per side and per match, the
 scripted bot included; a hold of 0 is a bad job. "Smooth Operator" plays at
 hold 9 (0.3 s, human reflexes).
 
+## Oracle slots (build `5c7bcacc`, kernel version 3)
+
+Not a version bump: physics, policy, descriptors, hash, RNG and the scripted
+bot are unchanged, and every version 3 match plays to the same hash. The build
+adds a scripted bot that plans with the game's own arithmetic
+(`kernel/src/oracle.rs`, exploration plan B4) at eleven slots: wherever a slot
+is expected, `oracle_slot_base() + i` plays rung i. Rung i sees the ball and
+the opponent `oracle_rung_delay(i)` ticks late and misplaces its spot by up to
+`oracle_rung_noise(i)`, drawn from its own generator seeded by the match seed
+and side (the serve's PCG32 is untouched), so a match with a rung is still a
+pure function of its job. Python names the rungs `oracle-v1-rung0` to
+`oracle-v1-rung10` (`Kernel.bots`, `Workers.bots`, beside `scripted-v1`);
+their official ratings are in `$ARENA_DATA/official/oracle/rung-<i>-5c7bcacc.json`.
+
+- `oracle_slot_base() -> u32`: `0xFFFFFF00`. `oracle_rungs() -> u32`: 11.
+- `oracle_rung_delay(i: u32) -> u32`, `oracle_rung_noise(i: u32) -> f64`: rung
+  i's delay in ticks and aim noise (0 past the last rung).
+- An oracle keeps state through a match (what it has seen, its plan), which
+  `play_match` holds. `policy_action` and `held_action` build a fresh oracle on
+  every call, so the page can show a rung moving but cannot replay a rung's
+  match tick for tick.
+
 ## Exports
 
 Constants
@@ -125,8 +147,8 @@ Matches
   (version 3; the two hold arguments are new), until a side has no lives or
   `max_ticks` ticks; returns ticks played; fills result block 0. A bad job
   (`max_ticks` of 0 or above the cap, a hold of 0, or a slot that is neither
-  in the table nor `scripted_slot()`) writes block 0 with flag bit 2 set and
-  returns 0.
+  in the table nor `scripted_slot()` nor, in an oracle build, an oracle slot)
+  writes block 0 with flag bit 2 set and returns 0.
 - `play_batch(n: u32, max_ticks: u32) -> u32`: runs the first `n` jobs from
   the jobs buffer in order, each as `play_match` without hashes per tick;
   stops at the first bad job, flags that job's block, and returns how many

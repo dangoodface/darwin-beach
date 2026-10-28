@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import wasmtime
 
-from .sim import MASK64, N_DESC, MatchResult
+from .sim import MASK64, N_DESC, SCRIPTED_ID, MatchResult, oracle_id
 
 JOB_DTYPE = np.dtype([("seed", "<u8"), ("a", "<u4"), ("b", "<u4")])  # versions 1 and 2
 JOB_DTYPE_HOLDS = np.dtype(  # version 3: each side holds its action for this many ticks
@@ -152,6 +152,12 @@ class Kernel:
             raise ValueError(f"{table.shape[0]} genomes, the kernel holds {self.table_capacity}")
         self._write(self._table_ptr, table)
         self._loaded = table.shape[0]
+
+    @property
+    def bots(self) -> dict[str, int]:
+        """The scripted bots this build plays, by id: the coach, and an oracle build's rungs."""
+        rungs = {oracle_id(i): self.oracle_slot_base + i for i in range(self.oracle_rungs)}
+        return {SCRIPTED_ID: self.scripted_slot} | rungs
 
     def oracle_rung(self, rung: int) -> tuple[int, float]:
         """An oracle build's rung: its perception delay in ticks and its aim noise."""
