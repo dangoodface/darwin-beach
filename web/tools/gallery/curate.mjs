@@ -246,7 +246,8 @@ const def = JSON.parse(readFileSync(join(OUT, RUN.r6, "definitive.json"), "utf8"
 const DEF_SEEDS = def.seeds.map(BigInt);
 const lb = def.leaderboard, byLabel = (l) => lb.find((e) => e.label === l);
 const king = lb[0], lob = byLabel("lob artist"), coachE = byLabel("the coach");
-const exploit = lb.find((e) => e.kind === "elite"), elite6 = lb.find((e) => e.label.startsWith("run 6 elite #6"));
+// The exploit: the top-rated new brain among those that win less than a quarter against the coach.
+const exploit = lb.find((e) => e.kind === "elite" && def.matrix.winrate[def.matrix.ids.indexOf(e.id)][def.matrix.ids.indexOf("scripted-v1")] < 0.25), elite6 = lb.find((e) => e.label.startsWith("run 6 elite #6"));
 const shortName = (e) => e.kind === "scripted" ? "COACH" : e.label.replace(/^run 6 elite (#\d).*/, "RUN 6 $1").replace(/^run 5 champion /, "CHAMP ").toUpperCase();
 const side = (e) => ({ label: shortName(e), kind: e.kind === "scripted" ? "coach" : "bot" });
 const rec5 = (e) => def.top.record[e.id];
