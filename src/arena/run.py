@@ -23,6 +23,7 @@ from .fresh import FRESH_SEEDS, FreshCheck
 from .genome import Genome, make_genome, random_params
 from .ladder import Challenge, Ladder
 from .optim import CmaMe, EvalResult, MapElites
+from .pool import load_pool, load_warm
 from .workers import Workers, make_simulator
 
 # Spawn order of the root SeedSequence. Appending is safe; reordering changes every run.
@@ -95,6 +96,17 @@ def rescore(archive: Archive, evaluator: Evaluator) -> tuple[Archive, list[EvalR
     return fresh, placed
 
 
+def tell_each(opt, archive: Archive, results: list[EvalResult]) -> tuple[list[str], list[str | None]]:
+    """Tells one result at a time so each eviction is attributed to the right newcomer."""
+    outcomes: list[str] = []
+    evicted: list[str | None] = []
+    for r in results:
+        resident = archive.get(archive.cell_of(r.bd))
+        outcomes.extend(opt.tell([r]))
+        evicted.append(resident.genome.id if resident and outcomes[-1] == "replaced" else None)
+    return outcomes, evicted
+
+
 def run(
     cfg: Config,
     observers: list[Observer] | tuple[()] = (),
@@ -118,7 +130,11 @@ def run(
             ladder_seeds = cfg.ladder_seed_list or tuple(
                 int(s) for s in ladder_ss.generate_state(cfg.ladder_seeds, dtype=np.uint64)
             )
-            ladder = Ladder(sim_scripted, ladder_seeds, cfg.ladder_threshold, cfg.ladder_cycle_window)
+            pool = load_pool(cfg.ladder_pool, kernel_sha, genome_len)
+            ladder = Ladder(sim_scripted, ladder_seeds, cfg.ladder_threshold, cfg.ladder_cycle_window,
+                            pool, cfg.ladder_hold_anchor, cfg.ladder_weight_scale)
+            if pool:  # the round robin: 100 blocks of ladder seeds for a pool of 23, a few seconds
+                ladder.rate_pool(workers, cfg.max_ticks)
 
         probe_rng = np.random.default_rng(probe_ss)
         probes = [
@@ -156,6 +172,20 @@ def run(
 
         info: GenerationInfo | None = None
         gen = 0
+        warm = load_warm(cfg.warm_runs, kernel_sha, genome_len, ladder.member_ids() if ladder else set())
+        if warm:  # generation 0 is the warm start: earlier elites scored under this run's rules
+            era = ladder.era if ladder else 0
+            per_candidate = evaluator.matches_per_candidate
+            results = []
+            for i in range(0, len(warm), RESCORE_BATCH):
+                results += evaluator.evaluate(warm[i : i + RESCORE_BATCH])
+            outcomes, evicted = tell_each(opt, archive, results)
+            matches = evaluator.matches_total + (ladder.matches_total if ladder else 0)
+            info = GenerationInfo(0, results, outcomes, evicted, matches, time.monotonic() - ctx.started_mono,
+                                  era, per_candidate)
+            for o in observers:
+                o.on_generation(ctx, info)
+            opt.generation = gen = 1
         while (generations is None or gen < generations) and (
             max_seconds is None or time.monotonic() - ctx.started_mono < max_seconds
         ):
@@ -163,14 +193,7 @@ def run(
             per_candidate = evaluator.matches_per_candidate
             cands = opt.ask()
             results = evaluator.evaluate(cands)
-            outcomes = []
-            evicted: list[str | None] = []
-            # tell one result at a time so each eviction is attributed to the right newcomer
-            for r in results:
-                cell = archive.cell_of(r.bd)
-                resident = archive.get(cell)
-                outcomes.extend(opt.tell([r]))
-                evicted.append(resident.genome.id if resident and outcomes[-1] == "replaced" else None)
+            outcomes, evicted = tell_each(opt, archive, results)
             challenge = rescored = None
             if ladder is not None and (gen + 1) % cfg.ladder_check_every == 0 and archive.best() is not None:
                 challenge = ladder.challenge(workers, archive.best().genome, gen, cfg.max_ticks)

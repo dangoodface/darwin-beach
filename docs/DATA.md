@@ -195,6 +195,36 @@ against for the cycle check. `matrix.winrate[r][c]` is how often row `r` beat co
 promotion and rating matches, `null` where they never played. The page draws
 it as the who-beats-whom table and flags cycles.
 
+### The pool (run 6, 27 October 2026)
+
+A run may start with a pool: members of kind `"pool"` present from era 0,
+each with a `label` (the name the page shows). The pool is rated once at the
+start by a round robin on the ladder seeds, every member against every other
+and the anchor, with the anchor fixed at 1000 (`src/arena/ladder.py`,
+`joint_elo`); those blocks are in `matrix` too, so it is full from the start.
+`champion` names the top-rated member, which is the one to beat: with a pool
+it is not the last member until a promotion happens, so read `champion`, not
+`members[-1]`. A promotion under `ladder.hold_anchor` must also win the
+threshold against the anchor, and fitness under `ladder.weight_scale` is the
+members' mean margins weighted by `10 ** ((rating - top) / scale)`.
+
+## definitive.json (run 6)
+
+Written by `python -m arena.definitive <run_id>` after a run: every member
+of its ladder, old and new, in a round robin on held-out serves (a stream
+the run never drew from), rated jointly with the anchor at 1000 and ranked.
+
+```json
+{"run_id": "…", "seeds": ["…"], "matches_per_pair": 32, "champion": "…",
+ "members_beaten": 23, "of": 24,
+ "fresh": {"<member id>": {"label": "…", "kind": "pool", "won": 30, "n": 32, "margin": 4.1}},
+ "leaderboard": [{"rank": 1, "id": "…", "label": "…", "kind": "champion", "rating": 1900.0, "run_rating": 1880.0}],
+ "matrix": {"ids": ["…"], "winrate": [[null, 0.9], [0.1, null]]}}
+```
+
+`fresh` is the champion's record against each other member; `run_rating`
+is the rating the member held in the run's ladder, for comparison.
+
 ## genomes/<id>.bin
 
 Raw f32 little-endian, `genome_len` values, nothing else. Written for the

@@ -170,11 +170,20 @@ def ladder_json(members: list[dict], pairs: list[dict], era: int, cycle_window: 
     out = []
     for m in members:
         entry = {"id": m["member_id"], "kind": m["kind"], "rating": m["rating"], "since_era": m["era"]}
-        if m["kind"] != "scripted":
+        if m.get("label"):  # pool members (run 6) carry the name the page shows
+            entry["label"] = m["label"]
+        if m["kind"] == "champion":
             entry["promoted_at_gen"] = m["gen"]
             entry["winrate_vs_previous"] = m["winrate_vs_previous"]
         out.append(entry)
-    return {"era": era, "members": out, "matrix": {"ids": ids, "winrate": win}, "cycle_window": cycle_window}
+    return {"era": era, "champion": top_member(members)["member_id"] if members else None, "members": out,
+            "matrix": {"ids": ids, "winrate": win}, "cycle_window": cycle_window}
+
+
+def top_member(members: list[dict]) -> dict:
+    """The champion: the top-rated member, the latest when tied. Without a pool that is
+    the last member, since a newcomer must out-rate the champion."""
+    return max(members, key=lambda m: (m["rating"], m["era"]))
 
 
 def export_run(
@@ -208,8 +217,9 @@ def export_run(
     fitness = current_fitness(entrants, scores)
     rating = {gid: s["rating"] for gid, s in scores.items()}
     best = champion_of(entrants, live, fitness)
-    champion = members[-1]["member_id"] if members else best
-    champion_rating = members[-1]["rating"] if members else None
+    top = top_member(members) if members else None
+    champion = top["member_id"] if top else best
+    champion_rating = top["rating"] if top else None
 
     # genomes the page can fetch: live elites, replay opponents (probes), the champion's ancestry, the ladder
     lineage = ancestors(champion, by_id)
@@ -295,8 +305,8 @@ def export_run(
 
     def champion_rating_at(gen: int) -> float | None:
         """The rating of the champion standing at the end of `gen`: a step that only rises."""
-        held = [m["rating"] for m in members if m["gen"] <= gen]
-        return held[-1] if held else None
+        held = [m["rating"] for m in members if m["gen"] <= gen]  # the pool (gen -1) is held from the start
+        return max(held) if held else None
 
     def fresh_at(gen: int) -> int | None:
         """beats_coach_fresh at the last export at or before `gen`; null before the first one."""
@@ -333,7 +343,8 @@ def export_run(
 
     if members:
         ladder_cfg = cfg.get("ladder", {})
-        _write_json(out / "ladder.json", ladder_json(members, store.ladder_pairs(run_id, "member"), last["era"],
+        pairs = store.ladder_pairs(run_id, "member") + store.ladder_pairs(run_id, "pool")
+        _write_json(out / "ladder.json", ladder_json(members, pairs, last["era"],
                                                      int(ladder_cfg.get("cycle_window", 5))))
 
     _update_index(root, run_id, cfg["slug"], run["started_at"], last["gen"])

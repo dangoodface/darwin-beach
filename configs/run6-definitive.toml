@@ -1,0 +1,174 @@
+# Run 6 (27 October 2026, afternoon): the definitive player. Daniel: "improve the greater cohorts we now
+# have: the champs, the coach and several specialists to beat; with the Elo system create the volleyball
+# definitive player; the same millions-of-matches engine of evolution, but better."
+# Run 5's engine (CMA-ME scored against the honest ladder) with three changes:
+#   the ladder starts as a pool of everyone we have, rated once by a round robin on the ladder seeds
+#   with the coach fixed at 1000; fitness weights each member's margin by its rating (weight_scale), so
+#   beating the strong ones counts most; a promotion must hold the coach as well as win the head-to-head
+#   (the night's lesson). The archive warm-starts from run 5's and run 4's elites, scored under these
+#   rules, so the map is full of real players from generation 0. Kernel version 2 (juggle counters).
+slug = "run6-definitive"
+seed = 20261106
+
+[sim]
+kind = "kernel"
+kernel_path = "artifacts/kernel/93c29e323d3d1d7874286754ae395de50a8e3932b20cd75aa77787ce4387ebfb.wasm"
+max_ticks = 3000
+
+[grid]
+descriptors = ["court_position", "airtime"]
+indices = [0, 1]
+bounds = [[0.0, 1.0], [0.0, 1.0]]
+resolution = [20, 20]
+qd_offset = 5.0
+lit_floor = 0.0
+
+[optim]
+kind = "cma_me"
+emitters = 4
+sigma0 = 0.05                # half of run 5's: the emitters start from refined elites, not random brains
+es = "cma_es"
+batch_size = 64
+init_size = 100              # moot: the warm start fills the archive before the first ask
+sigma = 0.1
+crossover_frac = 0.5
+
+[workers]
+count = 12
+jobs_per_task = 128
+
+[eval]
+probe_count = 3              # frozen generation-zero genomes after scripted-v1: the descriptors' fixed rivals
+seeds_per_probe = 4          # 8 matches per opponent per candidate; 27 opponents: 216 matches a candidate
+scripted_probe = true
+
+[export]
+every_s = 60
+tree_full_every_s = 3600
+
+[warm]
+runs = ["20261027T130856Z-night-r5-ladder", "20261027T110547Z-night-r4-cma"]
+
+[ladder]
+enabled = true
+check_every = 10
+seeds = 50                   # the pool's round robin and every promotion check: 100 matches per pairing
+threshold = 0.55
+cycle_window = 5
+hold_anchor = true           # a champion must also beat the coach at the threshold
+weight_scale = 800.0         # a member 800 points below the top counts a tenth
+
+[[ladder.pool]]
+label = "run 5 champion #1"
+path = "out/20261027T130856Z-night-r5-ladder/genomes/e943265e3bb94d12889574586594c46464266383562f0883e88f82346f829403.bin"
+id = "e943265e3bb94d12889574586594c46464266383562f0883e88f82346f829403"
+
+[[ladder.pool]]
+label = "run 5 champion #2"
+path = "out/20261027T130856Z-night-r5-ladder/genomes/4664513eb01ef98bd27d86002ceac3d7c1177b75c06413717920af976ba23249.bin"
+id = "4664513eb01ef98bd27d86002ceac3d7c1177b75c06413717920af976ba23249"
+
+[[ladder.pool]]
+label = "run 5 champion #3"
+path = "out/20261027T130856Z-night-r5-ladder/genomes/a857a406b36335a4b3686428fab8b2cadb8c031842a48a9e840dcade2ddc742a.bin"
+id = "a857a406b36335a4b3686428fab8b2cadb8c031842a48a9e840dcade2ddc742a"
+
+[[ladder.pool]]
+label = "run 5 champion #4"
+path = "out/20261027T130856Z-night-r5-ladder/genomes/41f40651a40c308c0684fa219f21eec72f24e1b03d3dc73a9ce8deb2ec8d1354.bin"
+id = "41f40651a40c308c0684fa219f21eec72f24e1b03d3dc73a9ce8deb2ec8d1354"
+
+[[ladder.pool]]
+label = "run 5 champion #5"
+path = "out/20261027T130856Z-night-r5-ladder/genomes/3c8cc513e8adc843401270ac3d9fa635efbf3a51ab07c446a15397ff772a032f.bin"
+id = "3c8cc513e8adc843401270ac3d9fa635efbf3a51ab07c446a15397ff772a032f"
+
+[[ladder.pool]]
+label = "run 5 champion #6"
+path = "out/20261027T130856Z-night-r5-ladder/genomes/c091f035a6f51980a0a3837779e42c97997c61c10f385427e9591a4a62cd07c0.bin"
+id = "c091f035a6f51980a0a3837779e42c97997c61c10f385427e9591a4a62cd07c0"
+
+[[ladder.pool]]
+label = "run 5 champion #7"
+path = "out/20261027T130856Z-night-r5-ladder/genomes/d868422c471626ebbf92f4afef81ec7fb892cc07e46998461f408107d5252f2e.bin"
+id = "d868422c471626ebbf92f4afef81ec7fb892cc07e46998461f408107d5252f2e"
+
+[[ladder.pool]]
+label = "run 5 champion #8"
+path = "out/20261027T130856Z-night-r5-ladder/genomes/56f1bc849192b15e86fa22edb3a8ace794ca64176175e5f71c40b387ea550994.bin"
+id = "56f1bc849192b15e86fa22edb3a8ace794ca64176175e5f71c40b387ea550994"
+
+[[ladder.pool]]
+label = "run 5 champion #9"
+path = "out/20261027T130856Z-night-r5-ladder/genomes/99517e19216b6556fef402c49469f0bf317bd4b109d6e8cd3b53970672f27295.bin"
+id = "99517e19216b6556fef402c49469f0bf317bd4b109d6e8cd3b53970672f27295"
+
+[[ladder.pool]]
+label = "run 5 champion #10"
+path = "out/20261027T130856Z-night-r5-ladder/genomes/d1ee507c2f8232a66c5ac66647f8728595e2c845b8a294f9ee974a2b7d95605e.bin"
+id = "d1ee507c2f8232a66c5ac66647f8728595e2c845b8a294f9ee974a2b7d95605e"
+
+[[ladder.pool]]
+label = "run 4 champion"
+path = "out/20261027T110547Z-night-r4-cma/genomes/f3ee2996a6b76cdc021db9fe0213b479a34b81972ed348e251e43ce7c4f9e169.bin"
+id = "f3ee2996a6b76cdc021db9fe0213b479a34b81972ed348e251e43ce7c4f9e169"
+
+[[ladder.pool]]
+label = "flat earther"
+path = "specialists/20261027T180711Z-spec-flat_earther/genomes/70d2e9346d482a54e005af122b512114d2999125e87906e42f50d0f41027ee8f.bin"
+id = "70d2e9346d482a54e005af122b512114d2999125e87906e42f50d0f41027ee8f"
+
+[[ladder.pool]]
+label = "flat earther twin"
+path = "specialists/20261027T182712Z-spec-flat_earther-twin/genomes/7a3792a851786796442394625cf8c0881d205df84e4a2af4f5726859869cc720.bin"
+id = "7a3792a851786796442394625cf8c0881d205df84e4a2af4f5726859869cc720"
+
+[[ladder.pool]]
+label = "all-rounder"
+path = "specialists/20261027T183713Z-spec-all_rounder/genomes/c7fd99648c6c14bd3c93fc4f20b87df9f2c60c3f076e8fed8594e12a3b83ddd7.bin"
+id = "c7fd99648c6c14bd3c93fc4f20b87df9f2c60c3f076e8fed8594e12a3b83ddd7"
+
+[[ladder.pool]]
+label = "kangaroo"
+path = "specialists/20261027T185713Z-spec-kangaroo/genomes/6caa2eacf41b3e8743a47659a63fb277585074d6f267be98f903764710a4a859.bin"
+id = "6caa2eacf41b3e8743a47659a63fb277585074d6f267be98f903764710a4a859"
+
+[[ladder.pool]]
+label = "kangaroo twin"
+path = "specialists/20261027T191714Z-spec-kangaroo-twin/genomes/f210b5d956457e7ebba04a35a405a2a8813fd984e7ddd9b0c59e3d7a895eac6c.bin"
+id = "f210b5d956457e7ebba04a35a405a2a8813fd984e7ddd9b0c59e3d7a895eac6c"
+
+[[ladder.pool]]
+label = "sprinter"
+path = "specialists/20261027T192716Z-spec-sprinter/genomes/7ee02b1e8943f246a2cfc42fad00b360aa2fbd215630328721bc1fb7e5cc3ece.bin"
+id = "7ee02b1e8943f246a2cfc42fad00b360aa2fbd215630328721bc1fb7e5cc3ece"
+
+[[ladder.pool]]
+label = "sprinter twin"
+path = "specialists/20261027T194716Z-spec-sprinter-twin/genomes/9e1c72c0166960acd51d16454d4e92c943217519eef1c942436852f50ffc979a.bin"
+id = "9e1c72c0166960acd51d16454d4e92c943217519eef1c942436852f50ffc979a"
+
+[[ladder.pool]]
+label = "long ball"
+path = "specialists/20261027T195717Z-spec-long_ball/genomes/24b3b7e74363eda7ae66402c4354b06770aabdaa0df8f5c15c3a4bf5951dc697.bin"
+id = "24b3b7e74363eda7ae66402c4354b06770aabdaa0df8f5c15c3a4bf5951dc697"
+
+[[ladder.pool]]
+label = "long ball twin"
+path = "specialists/20261027T201718Z-spec-long_ball-twin/genomes/b3d2f5946763c5c04ca09167a7cd6a8ee1a090dc9bb7832668f0720237838152.bin"
+id = "b3d2f5946763c5c04ca09167a7cd6a8ee1a090dc9bb7832668f0720237838152"
+
+[[ladder.pool]]
+label = "lob artist"
+path = "specialists/20261027T202719Z-spec-lob_artist/genomes/18c8b5a5262fbdfcc87245f9a980de48d623d5f5990039df380ca6899f9d1773.bin"
+id = "18c8b5a5262fbdfcc87245f9a980de48d623d5f5990039df380ca6899f9d1773"
+
+[[ladder.pool]]
+label = "lob artist twin"
+path = "specialists/20261027T204719Z-spec-lob_artist-twin/genomes/4a8735f6d898889bdbd9e80a9e09865694a7df07c5d098651b76135bc91a1cbc.bin"
+id = "4a8735f6d898889bdbd9e80a9e09865694a7df07c5d098651b76135bc91a1cbc"
+
+[[ladder.pool]]
+label = "joga bonito"
+path = "specialists/20261027T205720Z-spec-joga_bonito/genomes/ea39b2fd0040c6231934e4367ba49be5ec1691d21236b403021402de61889924.bin"
+id = "ea39b2fd0040c6231934e4367ba49be5ec1691d21236b403021402de61889924"

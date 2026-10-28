@@ -49,7 +49,7 @@ CREATE TABLE IF NOT EXISTS generations (
   PRIMARY KEY (run_id, gen));
 CREATE TABLE IF NOT EXISTS ladder_members (
   run_id TEXT, era INTEGER, kernel_sha TEXT, gen INTEGER, member_id TEXT, kind TEXT, rating REAL,
-  winrate_vs_previous REAL, PRIMARY KEY (run_id, member_id));
+  winrate_vs_previous REAL, label TEXT, PRIMARY KEY (run_id, member_id));
 CREATE TABLE IF NOT EXISTS ladder_results (
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT, era INTEGER, kernel_sha TEXT, gen INTEGER,
   purpose TEXT, a_id TEXT, b_id TEXT, n INTEGER, wins_a INTEGER, draws INTEGER, wins_b INTEGER);
@@ -110,9 +110,13 @@ class Store:
             for p in ctx.probes:
                 self._genome(ctx, p, "probe", ERA)
             if ctx.ladder is not None:
-                for m in ctx.ladder.members:  # scripted-v1, the anchor
-                    self.db.execute("INSERT INTO ladder_members VALUES (?,?,?,?,?,?,?,?)",
-                                    (ctx.run_id, m.since_era, ctx.kernel_sha, -1, m.id, m.kind, m.rating, None))
+                for m in ctx.ladder.members:  # scripted-v1, the anchor, then the pool (run 6)
+                    if m.genome is not None:
+                        self._genome(ctx, m.genome, "pool", ERA)
+                    self.db.execute("INSERT INTO ladder_members VALUES (?,?,?,?,?,?,?,?,?)",
+                                    (ctx.run_id, m.since_era, ctx.kernel_sha, -1, m.id, m.kind, m.rating, None, m.label))
+                for p in ctx.ladder.pool_pairs:  # the round robin that rated the pool
+                    self._pair(ctx, ERA, -1, "pool", p)
 
     def _genome(self, ctx: RunContext, g, kind: str, era: int) -> None:
         self.db.execute("INSERT OR IGNORE INTO genomes VALUES (?,?,?,?,?,?,?,?)",
@@ -175,9 +179,9 @@ class Store:
         self.db.execute("INSERT INTO promotions (run_id, era, kernel_sha, gen, genome_id, winrate_vs_previous)"
                         " VALUES (?,?,?,?,?,?)", (ctx.run_id, m.since_era, ctx.kernel_sha, gen, m.id,
                                                   m.winrate_vs_previous))
-        self.db.execute("INSERT INTO ladder_members VALUES (?,?,?,?,?,?,?,?)",
+        self.db.execute("INSERT INTO ladder_members VALUES (?,?,?,?,?,?,?,?,?)",
                         (ctx.run_id, m.since_era, ctx.kernel_sha, gen, m.id, m.kind, m.rating,
-                         m.winrate_vs_previous))
+                         m.winrate_vs_previous, None))
         for p in c.vs_members:  # the new champion against every earlier member: its row of the matrix
             self._pair(ctx, m.since_era, gen, "member", p)
         arch = ctx.archive  # already the fresh archive of the new era
@@ -248,7 +252,7 @@ class Store:
 
     def ladder_members(self, run_id: str) -> list[dict]:
         """The ladder in joining order, scripted-v1 first; empty for a v0 run."""
-        cur = self.db.execute("SELECT * FROM ladder_members WHERE run_id=? ORDER BY era", (run_id,))
+        cur = self.db.execute("SELECT * FROM ladder_members WHERE run_id=? ORDER BY era, rowid", (run_id,))
         cols = [c[0] for c in cur.description]
         return [dict(zip(cols, row)) for row in cur.fetchall()]
 

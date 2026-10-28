@@ -10,11 +10,18 @@ era begins, and fitness, measured against the members, is re-scored.
 Because a member's rating never changes and a newcomer must out-rate the
 champion, the champion's rating only rises: a climbing curve cannot come from
 a shifting scale or from beating a weak ladder.
+
+Run 6 (27 October 2026) adds a pool: members present from era 0, rated once
+by a round robin on the ladder seeds with the anchor fixed at 1000
+(`rate_pool`). The champion is then the top-rated member, fitness may weight
+the members by rating (`weights`), and a promotion may be required to hold
+the anchor as well as win the head-to-head (`hold_anchor`): the night's
+lesson was champions that beat each other and lost every match to the coach.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Sequence
 
 import numpy as np
@@ -54,15 +61,45 @@ def elo_mle(records: Sequence[tuple[float, float, int]]) -> float:
     return 0.5 * (lo + hi)
 
 
+def joint_elo(ids: Sequence[str], pairs: Sequence["Pair"], anchor: str, start: dict[str, float] | None = None,
+              rounds: int = 500, tol: float = 1e-7) -> dict[str, float]:
+    """Ratings for everyone at once from blocks of matches among them, the anchor fixed at 1000.
+
+    Each member's rating is re-fitted against the others' current ratings in turn
+    (`elo_mle`, with its virtual draws) until no rating moves; the likelihood
+    rises at every step, so the sweep converges when every member has played.
+    """
+    rating = {i: ANCHOR_RATING for i in ids}
+    rating.update(start or {})
+    rating[anchor] = ANCHOR_RATING
+    recs: dict[str, list[tuple[str, float, int]]] = {i: [] for i in ids}
+    for p in pairs:
+        recs[p.a].append((p.b, p.score_a, p.n))
+        recs[p.b].append((p.a, p.n - p.score_a, p.n))
+    for _ in range(rounds):
+        moved = 0.0
+        for i in ids:
+            if i == anchor or not recs[i]:
+                continue
+            new = elo_mle([(rating[o], s, n) for o, s, n in recs[i]])
+            moved = max(moved, abs(new - rating[i]))
+            rating[i] = new
+        if moved < tol:
+            break
+    return rating
+
+
 @dataclass(frozen=True)
 class Member:
     id: str
-    kind: str  # "scripted" or "champion"
+    kind: str  # "scripted", "champion" or "pool"
     rating: float  # frozen when it joined
     since_era: int
     genome: Genome | None = None  # None for the scripted bot
     promoted_at_gen: int | None = None
     winrate_vs_previous: float | None = None
+    label: str | None = None  # pool members: the name the page shows
+    source: str | None = None  # pool members: the id the genome had where it came from
 
 
 @dataclass(frozen=True)
@@ -75,6 +112,7 @@ class Pair:
     wins_a: int
     draws: int
     wins_b: int
+    margin_a: float = 0.0  # mean points for `a` minus points against, over the block
 
     @property
     def score_a(self) -> float:
@@ -105,12 +143,17 @@ class Challenge:
 
 class Ladder:
     def __init__(self, scripted_slot: int, seeds: tuple[int, ...], threshold: float = 0.55,
-                 cycle_window: int = 5) -> None:
+                 cycle_window: int = 5, pool: Sequence[Member] = (), hold_anchor: bool = False,
+                 weight_scale: float = 0.0) -> None:
         self.scripted_slot = scripted_slot
         self.seeds = seeds
         self.threshold = threshold
         self.cycle_window = cycle_window
-        self.members: list[Member] = [Member(SCRIPTED_ID, "scripted", ANCHOR_RATING, 0)]
+        self.hold_anchor = hold_anchor
+        self.weight_scale = weight_scale
+        # the anchor first, always; pool members carry provisional ratings until rate_pool
+        self.members: list[Member] = [Member(SCRIPTED_ID, "scripted", ANCHOR_RATING, 0)] + list(pool)
+        self.pool_pairs: tuple[Pair, ...] = ()
         self.era = 0
         self.matches_total = 0
         # Matches are a pure function of (seed, genomes): a challenger that failed
@@ -118,11 +161,25 @@ class Ladder:
         self._failed: set[str] = set()
 
     @property
+    def anchor(self) -> Member:
+        return self.members[0]
+
+    @property
     def champion(self) -> Member:
-        return self.members[-1]
+        """The top-rated member; the latest one when ratings tie. Without a pool
+        that is the last member, since a newcomer must out-rate the champion."""
+        return max(enumerate(self.members), key=lambda km: (km[1].rating, km[0]))[1]
 
     def member_ids(self) -> set[str]:
         return {m.id for m in self.members}
+
+    def weights(self) -> dict[str, float]:
+        """Fitness weight per member: 10 ** ((rating - top) / weight_scale), so the
+        strongest counts 1 and the rest less; everyone counts 1 when the scale is 0."""
+        if not self.weight_scale:
+            return {m.id: 1.0 for m in self.members}
+        top = max(m.rating for m in self.members)
+        return {m.id: 10.0 ** ((m.rating - top) / self.weight_scale) for m in self.members}
 
     def play(self, workers: Workers, genome: Genome, opponent: Member, max_ticks: int = 3000) -> Pair:
         """`genome` against a member over every ladder seed, both sides."""
@@ -132,15 +189,31 @@ class Ladder:
         results = workers.play(np.stack(table).astype(np.float32), jobs, max_ticks)
         self.matches_total += len(jobs)
         wins = draws = losses = 0
+        margin = 0
         for k, r in enumerate(results):
             mine, theirs = (r.points_a, r.points_b) if k % 2 == 0 else (r.points_b, r.points_a)
+            margin += mine - theirs
             if mine > theirs:
                 wins += 1
             elif mine == theirs:
                 draws += 1
             else:
                 losses += 1
-        return Pair(genome.id, opponent.id, len(jobs), wins, draws, losses)
+        return Pair(genome.id, opponent.id, len(jobs), wins, draws, losses, margin / len(jobs))
+
+    def rate_pool(self, workers: Workers, max_ticks: int = 3000) -> tuple[Pair, ...]:
+        """Every pool member against every other member and the anchor, on the ladder
+        seeds; the ratings are the joint fit with the anchor at 1000. Returns the blocks."""
+        pairs: list[Pair] = []
+        for k, a in enumerate(self.members):
+            if a.genome is None:
+                continue
+            for b in self.members[:k]:
+                pairs.append(self.play(workers, a.genome, b, max_ticks))
+        rating = joint_elo([m.id for m in self.members], pairs, self.anchor.id)
+        self.members = [m if m.genome is None else replace(m, rating=rating[m.id]) for m in self.members]
+        self.pool_pairs = tuple(pairs)
+        return self.pool_pairs
 
     def challenge(self, workers: Workers, challenger: Genome, gen: int, max_ticks: int = 3000) -> Challenge | None:
         """Plays the promotion check; on success the challenger joins and the era advances.
@@ -157,7 +230,8 @@ class Ladder:
             return Challenge(gen, self.era, challenger.id, h2h)
         vs = tuple(h2h if m is champion else self.play(workers, challenger, m, max_ticks) for m in self.members)
         rating = elo_mle([(m.rating, p.score_a, p.n) for m, p in zip(self.members, vs)])
-        if rating <= champion.rating:
+        held = not self.hold_anchor or vs[0].winrate_a >= self.threshold  # vs[0] is the anchor's block
+        if rating <= champion.rating or not held:
             self._failed.add(challenger.id)
             return Challenge(gen, self.era, challenger.id, h2h, vs, rating)
         member = Member(challenger.id, "champion", rating, self.era + 1, challenger, gen, h2h.winrate_a)

@@ -257,3 +257,103 @@ def test_kernel_descriptors_do_not_depend_on_the_ladder():
     assert [r.bd for r in before] == [r.bd for r in after]
     assert [r.replay for r in before] == [r.replay for r in after]
     assert any(a.fitness != b.fitness for a, b in zip(before, after))
+
+
+# ---- run 6: the pool, its ratings, holding the anchor, the warm start --------
+
+
+def test_joint_elo_matches_the_single_fit_against_the_anchor():
+    from arena.ladder import Pair, joint_elo
+
+    r = joint_elo([SCRIPTED_ID, "a"], [Pair("a", SCRIPTED_ID, 20, 14, 2, 4)], SCRIPTED_ID)
+    assert r[SCRIPTED_ID] == ANCHOR_RATING
+    assert abs(r["a"] - elo_mle([(ANCHOR_RATING, 15.0, 20)])) < 1e-6
+
+
+def test_joint_elo_orders_a_transitive_pool_and_explains_its_records():
+    from arena.ladder import Pair, joint_elo
+
+    ids = [SCRIPTED_ID, "a", "b"]
+    pairs = [Pair("a", SCRIPTED_ID, 10, 7, 0, 3), Pair("b", SCRIPTED_ID, 10, 9, 0, 1), Pair("b", "a", 10, 7, 0, 3)]
+    r = joint_elo(ids, pairs, SCRIPTED_ID)
+    assert r["b"] > r["a"] > ANCHOR_RATING
+    # at the fit, each member's expected total (with the virtual draws) equals its actual total
+    for i, opps in (("a", [(SCRIPTED_ID, 7.0, 10), ("b", 3.0, 10)]), ("b", [(SCRIPTED_ID, 9.0, 10), ("a", 7.0, 10)])):
+        expected = sum((n + 1) * expected_score(r[i], r[o]) for o, _, n in opps)
+        assert abs(expected - sum(s + 0.5 for _, s, _ in opps)) < 1e-6
+
+
+def test_hold_anchor_refuses_a_challenger_the_coach_beats(monkeypatch):
+    import numpy as np
+
+    from arena.genome import make_genome
+    from arena.ladder import Ladder, Member, Pair
+
+    rng = np.random.default_rng(1)
+    pool_g = make_genome(rng.standard_normal(515).astype(np.float32), "k", (), "pool", -1)
+    challenger = make_genome(rng.standard_normal(515).astype(np.float32), "k", (), "random", 3)
+
+    def fake_play(self, workers, genome, opponent, max_ticks=3000):
+        if opponent.id == SCRIPTED_ID:
+            return Pair(genome.id, opponent.id, 20, 6, 0, 14, -1.0)  # the coach beats it 14 of 20
+        return Pair(genome.id, opponent.id, 20, 18, 0, 2, 3.0)  # it beats the pool's champion 18 of 20
+
+    monkeypatch.setattr(Ladder, "play", fake_play)
+    for hold, promoted in ((False, True), (True, False)):
+        ladder = Ladder(0, (1, 2), pool=[Member(pool_g.id, "pool", 1050.0, 0, pool_g, label="p")], hold_anchor=hold)
+        assert ladder.champion.id == pool_g.id and ladder.anchor.id == SCRIPTED_ID
+        c = ladder.challenge(None, challenger, 10)
+        assert c is not None and c.promoted == promoted and c.rating > 1050.0
+        assert c.vs_members[0].b == SCRIPTED_ID and c.vs_members[0].winrate_a == 0.3
+        assert (ladder.era == 1) == promoted
+
+
+def test_weights_count_the_top_member_as_one_and_everyone_equal_without_a_scale():
+    from arena.ladder import Ladder, Member
+
+    pool = [Member("p1", "pool", 1800.0, 0, label="one"), Member("p2", "pool", 1000.0, 0, label="two")]
+    assert Ladder(0, (1,), pool=pool).weights() == {SCRIPTED_ID: 1.0, "p1": 1.0, "p2": 1.0}
+    w = Ladder(0, (1,), pool=pool, weight_scale=800.0).weights()
+    assert w["p1"] == 1.0 and abs(w["p2"] - 0.1) < 1e-12 and w[SCRIPTED_ID] == w["p2"]
+
+
+def test_pool_run_warm_starts_from_an_export_and_rates_the_pool(tmp_path):
+    so = StoreObserver(tmp_path)
+    first = run(_cfg(ladder_enabled=False, slug="seed-run"), [so, ExportObserver(so, 0.0, tmp_path)], generations=3, now=NOW)
+    out = tmp_path / "out" / first.run_id
+    cells = json.loads((out / "latest.json").read_text())["cells"]
+    assert len(cells) >= 3
+    pool = tuple({"path": str(out / "genomes" / f"{c['genome_id']}.bin"), "label": f"cell {c['i']},{c['j']}",
+                  "id": c["genome_id"]} for c in cells[:2])
+    rec, so2 = Rec(), StoreObserver(tmp_path)
+    ctx = run(_cfg(slug="pool-run", ladder_pool=pool, ladder_hold_anchor=True, ladder_weight_scale=800.0,
+                   warm_runs=(str(out),)), [so2, ExportObserver(so2, 0.0, tmp_path), rec], generations=12, now=NOW)
+    # generation 0 is the warm start: every exported elite but the two pool members, scored under the pool ladder
+    assert rec.gens[0].generation == 0 and len(rec.gens[0].results) == len(cells) - 2
+    assert {r.genome.op for r in rec.gens[0].results} == {"warm"}
+    assert rec.gens[1].generation == 1 and rec.gens[1].results[0].genome.gen == 1
+    assert ctx.archive.filled() >= 1
+    members = ctx.ladder.members
+    assert members[0].id == SCRIPTED_ID and members[0].rating == ANCHOR_RATING
+    assert [m.kind for m in members[1:3]] == ["pool", "pool"] and [m.label for m in members[1:3]] == [p["label"] for p in pool]
+    assert len(ctx.ladder.pool_pairs) == 3  # two against the anchor, one against each other
+    assert ctx.ladder.champion.id == max(members, key=lambda m: m.rating).id
+    assert all(m.rating != ANCHOR_RATING for m in members[1:3])  # rated, not provisional
+    # the export carries the pool: labels, the champion by rating, a full matrix among the first three
+    out2 = tmp_path / "out" / ctx.run_id
+    lad = json.loads((out2 / "ladder.json").read_text())
+    assert lad["champion"] == ctx.ladder.champion.id
+    assert [m.get("label") for m in lad["members"][:3]] == [None, pool[0]["label"], pool[1]["label"]]
+    w = lad["matrix"]["winrate"]
+    assert all(w[i][j] is not None for i in range(3) for j in range(3) if i != j)
+    for m in members[1:3]:
+        assert (out2 / "genomes" / f"{m.id}.bin").exists()
+    latest = json.loads((out2 / "latest.json").read_text())
+    assert latest["stats"]["champion_id"] == ctx.ladder.champion.id
+
+
+def test_run6_config_round_trips_its_pool():
+    c = load_config("configs/run6-definitive.toml")
+    assert len(c.ladder_pool) == 23 and c.ladder_hold_anchor and c.ladder_weight_scale == 800.0 and len(c.warm_runs) == 2
+    again = Config.from_dict({**c.to_dict(), "seed": c.seed})
+    assert again.ladder_pool == c.ladder_pool and again.warm_runs == c.warm_runs

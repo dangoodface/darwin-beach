@@ -46,6 +46,11 @@ class Config:
     ladder_threshold: float = 0.55  # share of the head-to-head a challenger must win
     ladder_cycle_window: int = 5  # a new champion's results against this many earlier members are kept as the cycle check
     ladder_seed_list: tuple[int, ...] = field(default_factory=tuple)  # empty: drawn from the run seed
+    # run 6: a pool of members present from era 0 ({path, label, id} each), rated once by a round robin
+    ladder_pool: tuple[dict, ...] = field(default_factory=tuple)
+    ladder_hold_anchor: bool = False  # a promotion must also win the threshold against the anchor
+    ladder_weight_scale: float = 0.0  # fitness weights a member by 10 ** ((rating - top) / scale); 0: all equal
+    warm_runs: tuple[str, ...] = field(default_factory=tuple)  # exports (run ids or paths) whose elites seed the archive
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> "Config":
@@ -87,6 +92,10 @@ class Config:
             ladder_threshold=float(ld.get("threshold", base.ladder_threshold)),
             ladder_cycle_window=int(ld.get("cycle_window", base.ladder_cycle_window)),
             ladder_seed_list=tuple(int(s) for s in ld.get("seed_list", ())),
+            ladder_pool=tuple(dict(p) for p in ld.get("pool", ())),
+            ladder_hold_anchor=bool(ld.get("hold_anchor", base.ladder_hold_anchor)),
+            ladder_weight_scale=float(ld.get("weight_scale", base.ladder_weight_scale)),
+            warm_runs=tuple(str(r) for r in d.get("warm", {}).get("runs", ())),
         )
         cfg.validate()
         return cfg
@@ -111,6 +120,12 @@ class Config:
             raise ValueError("optim.batch_size must split evenly over optim.emitters")
         if not 0.5 <= self.ladder_threshold <= 1.0:
             raise ValueError("ladder.threshold must be between 0.5 and 1")
+        if self.ladder_weight_scale < 0:
+            raise ValueError("ladder.weight_scale must be 0 (equal weights) or positive")
+        if self.ladder_pool and not self.ladder_enabled:
+            raise ValueError("ladder.pool needs ladder.enabled")
+        if any("path" not in p for p in self.ladder_pool):
+            raise ValueError("every ladder.pool entry needs a path")
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe form for the store; u64 seeds travel as decimal strings."""
@@ -130,7 +145,10 @@ class Config:
             "ladder": {"enabled": self.ladder_enabled, "check_every": self.ladder_check_every,
                        "seeds": self.ladder_seeds, "threshold": self.ladder_threshold,
                        "cycle_window": self.ladder_cycle_window,
-                       "seed_list": [str(s) for s in self.ladder_seed_list]},
+                       "seed_list": [str(s) for s in self.ladder_seed_list],
+                       "pool": [dict(p) for p in self.ladder_pool], "hold_anchor": self.ladder_hold_anchor,
+                       "weight_scale": self.ladder_weight_scale},
+            "warm": {"runs": list(self.warm_runs)},
         }
 
 

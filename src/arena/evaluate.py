@@ -11,7 +11,8 @@ the probe set; scripted-v1 is in both and is played once. Descriptors still
 come from the probe matches only, so a cell never moves when the ladder grows.
 Fitness is the mean margin over the matches against the ladder members, and
 the rating is the Elo that best explains those matches against the members'
-frozen ratings.
+frozen ratings. With a pool (run 6), each member's mean margin is weighted by
+the ladder's rating weights, so beating the strong ones counts most.
 """
 
 from __future__ import annotations
@@ -123,13 +124,19 @@ class Evaluator:
         from .ladder import elo_mle
 
         rating_of = {m.id: m.rating for m in self.ladder.members}
+        weight = self.ladder.weights()
         member_margins: list[int] = []
         records = []
+        weighted = total = 0.0
         for o, (oid, _) in enumerate(opponents):
             if oid not in rating_of:
                 continue
             block = margins[o * per_opp : (o + 1) * per_opp]
             member_margins.extend(block)
+            weighted += weight[oid] * float(np.mean(block))
+            total += weight[oid]
             score = sum(1.0 if m > 0 else 0.5 if m == 0 else 0.0 for m in block)
             records.append((rating_of[oid], score, len(block)))
-        return float(np.mean(member_margins)), elo_mle(records)
+        if not self.ladder.weight_scale:  # every member counts the same: the plain mean, as before run 6
+            return float(np.mean(member_margins)), elo_mle(records)
+        return weighted / total, elo_mle(records)
