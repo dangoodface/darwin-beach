@@ -1,4 +1,4 @@
-# Kernel ABI, version 2
+# Kernel ABI, version 3
 
 Rulings of 26 October 2026 (Opus's eight gaps and Sonnet's probe question)
 are folded in below; the scripted bot is a reserved slot.
@@ -9,6 +9,16 @@ from 152 to 184 bytes. The game does not move by a bit: physics, policy,
 hash, RNG and the scripted bot are version 1's, so every version 1 match,
 replay and stored hash plays out identically under version 2, with the same
 first eight descriptors.
+
+Version 3 (28 October 2026) widens the brain to 12-64-3 (1,027 parameters),
+adds a per-side action hold (to `play_match`, the jobs and the interactive
+game), raises `max_ticks_cap` to 12,000 and adds an eleventh descriptor,
+spiked_points. Jobs grow to 24 bytes and result blocks to 200. The game is
+unchanged: at hold 1, a version 2 genome padded with zeros (`pad_params`,
+below) plays the bit-identical match, which night run 6's genomes confirm
+1,000 matches out of 1,000. The hidden layer runs two units per wasm SIMD
+register (simd128: standard f64x2 add, mul, div and abs, no relaxed SIMD),
+each lane doing exactly one unit's multiplies and adds in the usual order.
 
 One WebAssembly module, `slime_kernel.wasm`, built from `kernel/` (Rust,
 target `wasm32-unknown-unknown`, plain `extern "C"` exports, no wasm-bindgen).
@@ -55,20 +65,42 @@ with the reason.
 
 ## Policy
 
-MLP 12 to 32 to 3, softsign on the hidden layer, linear output; action bit i
-is set when output i is greater than 0. Parameter layout, f32, little-endian,
-515 values: `W1[32][12]` row-major, `b1[32]`, `W2[3][32]` row-major, `b2[3]`.
-Each unit accumulates sequentially: `acc = b; for j: acc = acc + w[j] * x[j]`.
-No fused multiply-add, no pairwise sums.
+MLP 12 to 64 to 3 (version 3; 12 to 32 to 3 before), softsign on the hidden
+layer, linear output; action bit i is set when output i is greater than 0.
+Parameter layout, f32, little-endian, 1,027 values: `W1[64][12]` row-major
+(offset 0), `b1[64]` (768), `W2[3][64]` row-major (832), `b2[3]` (1024).
+Version 1 and 2 genomes have 515 values: `W1[32][12]`, `b1[32]`, `W2[3][32]`,
+`b2[3]`. Each unit accumulates sequentially: `acc = b; for j: acc = acc +
+w[j] * x[j]`. No fused multiply-add, no pairwise sums.
+
+Padding a version 2 genome (`arena.genome.pad_params`): every block keeps its
+old values first and gains zeros for hidden units 32 to 63, that is W1 rows
+32 to 63, `b1[32..64]`, and the last 32 columns of each W2 row; `b2` stays
+last. A zero unit outputs softsign(0) = 0 and adds 0 * 0 to each output, which
+never changes which side of 0 an output is on, so the padded genome takes the
+same actions and plays the same match, tick hash for tick hash.
+
+## Action holds (version 3)
+
+A side with hold `h` lets its brain choose an action on ticks where `tick % h
+== 0`, from tick 0, and repeats that action on the ticks in between; `h = 1`
+acts every tick, as before. `tick` is the number of ticks already played (the
+state block's `tick` before the step). Holds are per side and per match, the
+scripted bot included; a hold of 0 is a bad job. "Smooth Operator" plays at
+hold 9 (0.3 s, human reflexes).
 
 ## Exports
 
 Constants
-- `kernel_version() -> u32`: 2 (1 for the first module).
-- `desc_count() -> u32`: 10, the descriptors per side in a result block. A
-  version 1 module has no such export and always 8.
-- `genome_len() -> u32`: 515.
-- `max_ticks_cap() -> u32`: 3000. `max_ticks` arguments above it are an error.
+- `kernel_version() -> u32`: 3 (2 and 1 for the earlier modules).
+- `desc_count() -> u32`: 11, the descriptors per side in a result block (10 in
+  version 2). A version 1 module has no such export and always 8.
+- `job_bytes() -> u32`: 24, the size of one job (version 3). Older modules
+  have no such export and 16-byte jobs.
+- `genome_len() -> u32`: 1027 (515 before version 3).
+- `max_ticks_cap() -> u32`: 12,000 (3,000 before version 3). `max_ticks`
+  arguments above it are an error. Training plays 3,000; evaluations may
+  play longer.
 - `table_capacity() -> u32`: 1024 genomes. `batch_capacity() -> u32`: 256 jobs.
 - `scripted_slot() -> u32`: `0xFFFFFFFF`. Wherever a slot is expected
   (`play_match`, a job, `policy_action`) this value means the scripted bot.
@@ -76,22 +108,25 @@ Constants
 Memory (byte offsets into the exported `memory`; all static, no allocator)
 - `genome_table_ptr() -> u32`: `f32[table_capacity][genome_len]`. Slot i is
   genome i. The caller fills slots with one bulk copy each.
-- `jobs_ptr() -> u32`: `batch_capacity` jobs of 16 bytes: `seed u64, a u32,
-  b u32` (slot indexes into the genome table).
-- `results_ptr() -> u32`: `batch_capacity` result blocks of 184 bytes, 152 in
-  version 1 (layout below). `play_match` writes block 0; `play_batch` writes block i for job i.
+- `jobs_ptr() -> u32`: `batch_capacity` jobs of 24 bytes: `seed u64, a u32,
+  b u32, hold_a u32, hold_b u32` (slot indexes into the genome table, then
+  the holds; 16 bytes without holds before version 3).
+- `results_ptr() -> u32`: `batch_capacity` result blocks of 200 bytes (184 in
+  version 2, 152 in version 1; layout below). `play_match` writes block 0; `play_batch` writes block i for job i.
 - `tick_hash_ptr() -> u32`: `u64[max_ticks_cap]`, filled by `play_match`
   when `record_hashes` is nonzero. `tick_hash[i]` is the running hash after
   tick `i + 1` (the state block's `tick` is the 1-based count after a step).
 - `state_ptr() -> u32`: the f64 state block of the interactive game (below).
 
 Matches
-- `play_match(seed: u64, a: u32, b: u32, max_ticks: u32, record_hashes: u32)
-  -> u32`: resets with `seed`, plays table slot `a` on the left and `b` on
-  the right until a side has no lives or `max_ticks` ticks; returns ticks
-  played; fills result block 0. A bad job (`max_ticks` of 0 or above the cap,
-  or a slot that is neither in the table nor `scripted_slot()`) writes block
-  0 with flag bit 2 set and returns 0.
+- `play_match(seed: u64, a: u32, b: u32, max_ticks: u32, record_hashes: u32,
+  hold_a: u32, hold_b: u32) -> u32`: resets with `seed`, plays table slot
+  `a` on the left and `b` on the right, each holding its action for its hold
+  (version 3; the two hold arguments are new), until a side has no lives or
+  `max_ticks` ticks; returns ticks played; fills result block 0. A bad job
+  (`max_ticks` of 0 or above the cap, a hold of 0, or a slot that is neither
+  in the table nor `scripted_slot()`) writes block 0 with flag bit 2 set and
+  returns 0.
 - `play_batch(n: u32, max_ticks: u32) -> u32`: runs the first `n` jobs from
   the jobs buffer in order, each as `play_match` without hashes per tick;
   stops at the first bad job, flags that job's block, and returns how many
@@ -99,7 +134,18 @@ Matches
 
 Interactive (for the browser, and for tests)
 - `reset(seed: u64)`, `set_actions(a: u32, b: u32)`, `step() -> i32`:
-  returns +1 when A wins the point, -1 when B wins it, 0 otherwise.
+  returns +1 when A wins the point, -1 when B wins it, 0 otherwise. `reset`
+  also sets both holds to 1; `set_actions` remembers the actions it applies.
+- `set_holds(hold_a: u32, hold_b: u32) -> u32` (version 3): the interactive
+  game's holds, called after `reset`. Returns 1, or 0 and changes nothing
+  when a hold is 0.
+- `held_action(side: u32, slot: u32) -> u32` (version 3): `policy_action`
+  under the side's hold: the brain's action on ticks divisible by the hold,
+  otherwise the action the side last applied through `set_actions`. The
+  page's replay loop is `reset(seed); set_holds(h_a, h_b);` then each tick
+  `a = held_action(0, slot_a); b = held_action(1, slot_b); set_actions(a, b);
+  step()`, which plays exactly what `play_match` played with those holds. A
+  human side skips `held_action` and passes its keys to `set_actions`.
 - `is_done(max_ticks: u32) -> u32`: 1 when a side has no lives or the tick
   count reached `max_ticks`.
 - `policy_action(side: u32, slot: u32) -> u32`: the action genome `slot`
@@ -114,7 +160,7 @@ Interactive (for the browser, and for tests)
   opponent, so any change is a kernel version bump.
 - `state_hash() -> u64`: the running hash of the interactive game.
 
-## Result block (184 bytes; 152 in version 1)
+## Result block (200 bytes; 184 in version 2, 152 in version 1)
 
 | offset | type | field |
 |---|---|---|
@@ -123,8 +169,8 @@ Interactive (for the browser, and for tests)
 | 12 | u32 | points_a |
 | 16 | u32 | points_b |
 | 20 | u32 | flags: bit 0 NaN or infinity seen, bit 1 ended on `max_ticks` with both sides still holding lives, bit 2 bad job |
-| 24 | f64[10] | descriptors A (f64[8] in version 1) |
-| 104 | f64[10] | descriptors B (at 88, f64[8], in version 1) |
+| 24 | f64[11] | descriptors A (f64[10] in version 2, f64[8] in version 1) |
+| 112 | f64[11] | descriptors B (at 104 in version 2, at 88 in version 1) |
 
 ## Descriptors, per side, over the whole match
 
@@ -140,6 +186,7 @@ Interactive (for the browser, and for tests)
 | 7 | points | points won |
 | 8 | juggled_points | points won with a juggle (version 2; below) |
 | 9 | max_streak | the longest streak of own touches in the match, sent or not (version 2) |
+| 10 | spiked_points | points won with a spike (version 3; below) |
 
 The x range comes from the slime's own-half clamp: `x*dir` runs from
 `REF_WALL_WIDTH/2 + r = 2.0` at the net to `REF_W/2 - r = 22.5` at the wall.
@@ -161,6 +208,17 @@ spans and sent streaks reset with every point; juggled_points and max_streak
 add up over the match. In a tick, touches count before the crossing, and the
 crossing before the point. The tracker reads the state after the NaN check
 and never writes the physics or the hash. Constants in `kernel/src/juggle.rs`.
+
+### Spikes (version 3, Daniel's definition)
+
+On the same per-side tracker: a point is spiked for the side that won it when
+that side's most recently sent streak had at least `SPIKE_MIN_TOUCHES = 2`
+touches, the spike included (one carry, then the spike), and its last touch
+had the slime's centre within `SPIKE_MAX_FROM_NET = 4.0` of the net (`x*dir
+<= 4.0`; the net is at 0 and the back wall at 24) and sent the ball off at
+`SPIKE_MIN_SPEED = 35.0` or more (its speed right after the bounce, as
+mean_speed_after_hit measures it). Like juggled_points, a match total;
+everything else resets with each point.
 
 ## State block (f64 from `state_ptr`)
 
@@ -234,7 +292,8 @@ Start: ball at (0, 12) with the random vx and vy, A at (-12, 1.5), B at
 
 Any change to physics, policy, descriptors, hash, RNG or the scripted bot
 bumps `kernel_version`. Version 1 is `5487b2a6…`; version 2, which adds the
-juggle descriptors and nothing else, is `93c29e32…` (full shas in
-`artifacts/kernel/README.md`). A built module is stored as
+juggle descriptors and nothing else, is `93c29e32…`; version 3, the wider
+brain, holds, the 12,000-tick cap and spiked_points, is `0f673ff4…` (full
+shas in `artifacts/kernel/README.md`). A built module is stored as
 `artifacts/kernel/<sha256>.wasm` and never deleted; every genome, snapshot
 and replay records the kernel sha it was made with.

@@ -35,7 +35,7 @@ GATE = 1000.0
 
 
 def make_batches(kernel: Kernel, workload: str, rng: np.random.Generator) -> tuple[np.ndarray, list[list]]:
-    table = np.stack([random_params(rng) for _ in range(N_GENOMES + 2)])
+    table = np.stack([random_params(rng, kernel.genome_len) for _ in range(N_GENOMES + 2)])
     bot = kernel.scripted_slot
     probes = [bot, N_GENOMES, N_GENOMES + 1]
     batches = []

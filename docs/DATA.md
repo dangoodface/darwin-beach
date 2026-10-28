@@ -86,7 +86,8 @@ so the mean of `margins` equals `fitness` to floating-point error. It is
 
 `descriptor_names` lists the run kernel's descriptors in ABI order, taken
 from the run's recorded kernel version: eight for version 1 (and the pretend
-game), ten from version 2, which adds `juggled_points` and `max_streak`.
+game), ten for version 2, which adds `juggled_points` and `max_streak`, and
+eleven from version 3, which adds `spiked_points`.
 `cells[].desc` carries the elite's mean of all of them over its evaluation
 matches, so `desc` at `grid.indices` equals `bd`. The page draws strategy
 on top of the map from it (hits per match, hit height, speed after contact);
@@ -235,7 +236,10 @@ for an elite), for comparison.
 
 ## genomes/<id>.bin
 
-Raw f32 little-endian, `genome_len` values, nothing else. Written for the
+Raw f32 little-endian, `genome_len` values, nothing else: 515 for kernel
+versions 1 and 2, 1,027 from version 3 (layout in docs/ABI.md). A 515-value
+genome runs on version 3 padded (`arena.genome.pad_params`), unchanged in play.
+A replay of a held side (version 3) also needs that side's hold. Written for the
 live elites, the champion's ancestors and the probes (the replay opponents),
 once each, never rewritten.
 

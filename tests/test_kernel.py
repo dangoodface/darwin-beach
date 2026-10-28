@@ -15,8 +15,9 @@ from arena.sim import SCRIPTED_SLOT, MatchResult
 KERNEL = find_kernel()
 pytestmark = pytest.mark.skipif(KERNEL is None, reason="no kernel: build it (README) or set ARENA_KERNEL")
 
+GLEN = Kernel(KERNEL).genome_len if KERNEL else 1027
 # Sixteen genomes from near idle to wild.
-TABLE = (np.random.default_rng(7).standard_normal((16, 515)) * np.linspace(0.2, 2.0, 16)[:, None]).astype(np.float32)
+TABLE = (np.random.default_rng(7).standard_normal((16, GLEN)) * np.linspace(0.2, 2.0, 16)[:, None]).astype(np.float32)
 
 
 @pytest.fixture(scope="module")
@@ -27,15 +28,16 @@ def kernel() -> Kernel:
 
 
 def test_protocol_attributes(kernel):
-    assert kernel.genome_len == 515
-    assert kernel.kernel_version == 2 and kernel.desc_count == 10
+    assert kernel.genome_len == 1027
+    assert kernel.kernel_version == 3 and kernel.desc_count == 11 and kernel.holds
+    assert kernel.max_ticks_cap == 12_000
     assert kernel.scripted_slot == SCRIPTED_SLOT == 0xFFFFFFFF
     assert kernel.kernel_sha == hashlib.sha256(KERNEL.read_bytes()).hexdigest()
 
 
 def test_a_match_is_a_pure_function_of_its_inputs(kernel):
     other = Kernel(KERNEL)
-    other.load_genomes(np.zeros((1, 515), dtype=np.float32))
+    other.load_genomes(np.zeros((1, GLEN), dtype=np.float32))
     first = kernel.play(123, 3, 4)
     assert kernel.play(123, 3, 4) == first
     other.load_genomes(TABLE)
@@ -76,16 +78,17 @@ def test_batch_equals_single_plays_across_chunks_and_bad_jobs(kernel):
 def test_max_ticks_rules(kernel):
     short = kernel.play(9, 1, 2, max_ticks=10)
     assert short.ticks == 10 and short.flags == FLAG_MAX_TICKS
-    for bad in (0, 3001):
+    assert kernel.play(9, 1, 2, max_ticks=6000).flags & FLAG_BAD_JOB == 0  # evaluations may run long
+    for bad in (0, kernel.max_ticks_cap + 1):
         assert kernel.play(9, 1, 2, max_ticks=bad).flags == FLAG_BAD_JOB
         assert kernel.play_batch([(9, 1, 2), (9, 2, 1)], max_ticks=bad) == [kernel.bad_job, kernel.bad_job]
 
 
 def test_load_genomes_checks_shape_and_capacity(kernel):
     with pytest.raises(ValueError):
-        kernel.load_genomes(np.zeros((4, 514), dtype=np.float32))
+        kernel.load_genomes(np.zeros((4, GLEN - 1), dtype=np.float32))
     with pytest.raises(ValueError):
-        kernel.load_genomes(np.zeros((1025, 515), dtype=np.float32))
+        kernel.load_genomes(np.zeros((1025, GLEN), dtype=np.float32))
     kernel.load_genomes(TABLE)
 
 
@@ -93,3 +96,16 @@ def test_interactive_replay_matches_play(kernel):
     for seed, a, b in [(77, 5, 6), (2**64 - 9, SCRIPTED_SLOT, 3), (3, SCRIPTED_SLOT, SCRIPTED_SLOT)]:
         r = kernel.play(seed, a, b)
         assert kernel.replay(seed, a, b) == (r.ticks, r.final_hash)
+
+
+def test_holds_agree_across_play_batch_and_replay(kernel):
+    for ha, hb in [(1, 1), (9, 1), (1, 9), (4, 6)]:
+        r = kernel.play(31, 3, SCRIPTED_SLOT, hold_a=ha, hold_b=hb)
+        assert r.flags & FLAG_BAD_JOB == 0
+        assert kernel.play_batch([(31, 3, SCRIPTED_SLOT, ha, hb)])[0] == r
+        assert kernel.replay(31, 3, SCRIPTED_SLOT, hold_a=ha, hold_b=hb) == (r.ticks, r.final_hash)
+    assert kernel.play(31, 3, SCRIPTED_SLOT, hold_a=9) != kernel.play(31, 3, SCRIPTED_SLOT)
+    assert kernel.play_batch([(31, 3, SCRIPTED_SLOT)])[0] == kernel.play_batch([(31, 3, SCRIPTED_SLOT, 1, 1)])[0]
+    assert kernel.play(31, 3, 4, hold_a=0) == kernel.bad_job
+    assert kernel.play_batch([(31, 3, 4, 0, 1), (31, 3, 4)])[0] == kernel.bad_job
+

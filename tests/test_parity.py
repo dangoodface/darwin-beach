@@ -47,17 +47,23 @@ def make_matches(kernel: Kernel) -> tuple[np.ndarray, list[tuple[int, int, int]]
             a, b = bot, i % n
         else:
             a, b = bot, bot
-        jobs.append((seed, a, b))
+        if kernel.holds and kind in (1, 8):  # version 3: some sides decide only every few ticks
+            jobs.append((seed, a, b, 9, 1) if kind == 1 else (seed, a, b, 1, 3))
+        else:
+            jobs.append((seed, a, b))
     return genomes, jobs
 
 
-def run_node(genomes: np.ndarray, jobs: list[tuple[int, int, int]], block_bytes: int = 184,
-             ) -> list[tuple[int, int, int, np.ndarray, bytes]]:
+def run_node(genomes: np.ndarray, jobs: list[tuple[int, ...]], block_bytes: int = 184,
+             job_dtype: np.dtype = JOB_DTYPE) -> list[tuple[int, int, int, np.ndarray, bytes]]:
     head = np.array([len(genomes), len(jobs), MAX_TICKS], dtype="<u4")
-    packed = np.empty(len(jobs), dtype=JOB_DTYPE)
-    packed["seed"] = [s for s, _, _ in jobs]
-    packed["a"] = [a for _, a, _ in jobs]
-    packed["b"] = [b for _, _, b in jobs]
+    packed = np.empty(len(jobs), dtype=job_dtype)
+    packed["seed"] = [j[0] for j in jobs]
+    packed["a"] = [j[1] for j in jobs]
+    packed["b"] = [j[2] for j in jobs]
+    if "hold_a" in job_dtype.names:
+        packed["hold_a"] = [j[3] if len(j) == 5 else 1 for j in jobs]
+        packed["hold_b"] = [j[4] if len(j) == 5 else 1 for j in jobs]
     payload = head.tobytes() + np.ascontiguousarray(genomes, dtype="<f4").tobytes() + packed.tobytes()
     proc = subprocess.run(["node", str(PARITY_JS), str(KERNEL)], input=payload, capture_output=True, check=False)
     assert proc.returncode == 0, proc.stderr.decode()
@@ -77,11 +83,12 @@ def test_wasmtime_and_node_agree_tick_by_tick():
     kernel = Kernel(KERNEL)
     genomes, jobs = make_matches(kernel)
     kernel.load_genomes(genomes)
-    node = run_node(genomes, jobs, kernel._result_dtype.itemsize)
+    node = run_node(genomes, jobs, kernel._result_dtype.itemsize, kernel._job_dtype)
 
     mismatches, ended_on_cap, ended_on_lives = [], 0, 0
-    for j, ((seed, a, b), (n_ticks, n_flags, n_final, n_hashes, n_block)) in enumerate(zip(jobs, node)):
-        r = kernel.play(seed, a, b, MAX_TICKS, record_hashes=True)
+    for j, (job, (n_ticks, n_flags, n_final, n_hashes, n_block)) in enumerate(zip(jobs, node)):
+        seed, a, b = job[:3]
+        r = kernel.play(seed, a, b, MAX_TICKS, True, *job[3:5])
         assert r.flags & (FLAG_NAN | FLAG_BAD_JOB) == 0, f"match {j}: flags {r.flags}"
         ended_on_cap += bool(r.flags & FLAG_MAX_TICKS)
         ended_on_lives += 5 in (r.points_a, r.points_b)

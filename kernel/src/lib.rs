@@ -22,10 +22,12 @@ use core::cell::UnsafeCell;
 
 use descriptors::N_DESC;
 use physics::{FLAG_NAN, Game};
-use policy::{GENOME_LEN, net_action, upcast};
+use policy::{GENOME_LEN, Net, net_action, upcast};
 
-pub const KERNEL_VERSION: u32 = 2;
-pub const MAX_TICKS_CAP: u32 = 3000;
+pub const KERNEL_VERSION: u32 = 3;
+/// The longest match `play_match` accepts: 12,000 since version 3 (3,000 before),
+/// so evaluations can play past training's 3,000 ticks.
+pub const MAX_TICKS_CAP: u32 = 12_000;
 pub const TABLE_CAPACITY: usize = 1024;
 pub const BATCH_CAPACITY: usize = 256;
 /// The table slot that means "the scripted anchor bot" in jobs and calls.
@@ -42,10 +44,14 @@ pub struct Job {
     pub seed: u64,
     pub a: u32,
     pub b: u32,
+    /// Ticks each side holds its action (version 3): the brain acts when
+    /// tick % hold == 0 and the action repeats in between; 1 acts every tick.
+    pub hold_a: u32,
+    pub hold_b: u32,
 }
 
-/// One result block, laid out as docs/ABI.md says: 184 bytes since version 2
-/// (ten descriptors a side), 152 in version 1 (eight).
+/// One result block, laid out as docs/ABI.md says: 200 bytes since version 3
+/// (eleven descriptors a side), 184 in version 2 (ten), 152 in version 1 (eight).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MatchResult {
@@ -58,7 +64,7 @@ pub struct MatchResult {
     pub desc_b: [f64; N_DESC],
 }
 
-const _: () = assert!(core::mem::size_of::<Job>() == 16);
+const _: () = assert!(core::mem::size_of::<Job>() == 24);
 const _: () = assert!(core::mem::size_of::<MatchResult>() == 24 + 2 * 8 * N_DESC);
 
 impl MatchResult {
@@ -96,6 +102,8 @@ static JOBS: Shared<[Job; BATCH_CAPACITY]> = Shared::new(
         seed: 0,
         a: 0,
         b: 0,
+        hold_a: 1,
+        hold_b: 1,
     }; BATCH_CAPACITY],
 );
 static RESULTS: Shared<[MatchResult; BATCH_CAPACITY]> =
@@ -105,12 +113,15 @@ static STATE: Shared<[f64; STATE_LEN]> = Shared::new([0.0; STATE_LEN]);
 /// The interactive game, separate from matches so `play_match` never
 /// disturbs a replay in progress.
 static GAME: Shared<Game> = Shared::new(Game::new(0));
+/// The interactive game's holds and the actions it last applied, per side.
+static HOLDS: Shared<[u32; 2]> = Shared::new([1, 1]);
+static LAST_ACTIONS: Shared<[u32; 2]> = Shared::new([0, 0]);
 
 /// Who controls a side: a genome from the table, or the anchor bot. Built
 /// once per side per match, on the stack (boxing would need an allocator).
 #[allow(clippy::large_enum_variant)]
 enum Controller {
-    Net([f64; GENOME_LEN]),
+    Net(Net),
     Scripted,
 }
 
@@ -134,12 +145,15 @@ impl Controller {
 
 /// Plays one match from a fresh game and writes its result block. Returns
 /// the ticks played, 0 for a bad job.
+#[allow(clippy::too_many_arguments)]
 pub fn run_match(
     table: &[f32],
     seed: u64,
     a: u32,
     b: u32,
     max_ticks: u32,
+    hold_a: u32,
+    hold_b: u32,
     mut tick_hashes: Option<&mut [u64]>,
     out: &mut MatchResult,
 ) -> u32 {
@@ -150,14 +164,20 @@ pub fn run_match(
         *out = MatchResult::BAD_JOB;
         return 0;
     };
-    if max_ticks == 0 || max_ticks > MAX_TICKS_CAP {
+    if max_ticks == 0 || max_ticks > MAX_TICKS_CAP || hold_a == 0 || hold_b == 0 {
         *out = MatchResult::BAD_JOB;
         return 0;
     }
     let mut game = Game::new(seed);
+    let (mut action_a, mut action_b) = (0, 0);
     while !game.is_done(max_ticks) {
-        let action_a = side_a.action(&game.a.obs);
-        let action_b = side_b.action(&game.b.obs);
+        // A held side's brain only acts on ticks divisible by its hold, from tick 0.
+        if game.tick.is_multiple_of(hold_a) {
+            action_a = side_a.action(&game.a.obs);
+        }
+        if game.tick.is_multiple_of(hold_b) {
+            action_b = side_b.action(&game.b.obs);
+        }
         game.set_actions(action_a, action_b);
         game.step();
         if let Some(hashes) = tick_hashes.as_deref_mut()
@@ -223,8 +243,15 @@ pub extern "C" fn batch_capacity() -> u32 {
     BATCH_CAPACITY as u32
 }
 
-/// Descriptors per side in a result block: 10 since version 2. A version 1 module
-/// has no such export and always 8.
+/// Bytes per job in the jobs buffer: 24 since version 3 (seed, a, b, hold_a,
+/// hold_b). Older modules have no such export and 16-byte jobs.
+#[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
+pub extern "C" fn job_bytes() -> u32 {
+    core::mem::size_of::<Job>() as u32
+}
+
+/// Descriptors per side in a result block: 11 since version 3, 10 in version 2. A
+/// version 1 module has no such export and always 8.
 #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
 pub extern "C" fn desc_count() -> u32 {
     N_DESC as u32
@@ -260,10 +287,19 @@ pub extern "C" fn state_ptr() -> u32 {
     STATE.ptr() as usize as u32
 }
 
-/// Plays table slot `a` on the left and `b` on the right; fills result
+/// Plays table slot `a` on the left and `b` on the right, each holding its
+/// action for `hold_a` and `hold_b` ticks (1 acts every tick); fills result
 /// block 0, and the tick hashes when `record_hashes` is nonzero.
 #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
-pub extern "C" fn play_match(seed: u64, a: u32, b: u32, max_ticks: u32, record_hashes: u32) -> u32 {
+pub extern "C" fn play_match(
+    seed: u64,
+    a: u32,
+    b: u32,
+    max_ticks: u32,
+    record_hashes: u32,
+    hold_a: u32,
+    hold_b: u32,
+) -> u32 {
     let results = unsafe { &mut *RESULTS.ptr() };
     let tick_hashes = unsafe { &mut *TICK_HASH.ptr() };
     let hashes = if record_hashes != 0 {
@@ -277,6 +313,8 @@ pub extern "C" fn play_match(seed: u64, a: u32, b: u32, max_ticks: u32, record_h
         a,
         b,
         max_ticks,
+        hold_a,
+        hold_b,
         hashes,
         &mut results[0],
     )
@@ -299,6 +337,8 @@ pub extern "C" fn play_batch(n: u32, max_ticks: u32) -> u32 {
             job.a,
             job.b,
             max_ticks,
+            job.hold_a,
+            job.hold_b,
             None,
             &mut results[i],
         );
@@ -313,11 +353,27 @@ pub extern "C" fn play_batch(n: u32, max_ticks: u32) -> u32 {
 pub extern "C" fn reset(seed: u64) {
     let game = unsafe { &mut *GAME.ptr() };
     *game = Game::new(seed);
+    unsafe {
+        *HOLDS.ptr() = [1, 1];
+        *LAST_ACTIONS.ptr() = [0, 0];
+    }
     write_state(game);
+}
+
+/// The interactive game's holds, per side (version 3); `reset` sets both to 1.
+/// Returns 1, or 0 and changes nothing when a hold is 0.
+#[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
+pub extern "C" fn set_holds(hold_a: u32, hold_b: u32) -> u32 {
+    if hold_a == 0 || hold_b == 0 {
+        return 0;
+    }
+    unsafe { *HOLDS.ptr() = [hold_a, hold_b] };
+    1
 }
 
 #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
 pub extern "C" fn set_actions(a: u32, b: u32) {
+    unsafe { *LAST_ACTIONS.ptr() = [a, b] };
     unsafe { &mut *GAME.ptr() }.set_actions(a, b);
 }
 
@@ -350,6 +406,25 @@ pub extern "C" fn policy_action(side: u32, slot: u32) -> u32 {
     }
 }
 
+/// `policy_action` under the side's hold (version 3): the brain's action on
+/// ticks divisible by the hold, otherwise the action the side last applied
+/// through `set_actions`. The page's loop calls this for both sides, then
+/// `set_actions` and `step`, and replays exactly what `play_match` played.
+#[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
+pub extern "C" fn held_action(side: u32, slot: u32) -> u32 {
+    let (game, holds, last) = unsafe { (&*GAME.ptr(), &*HOLDS.ptr(), &*LAST_ACTIONS.ptr()) };
+    if side > 1 {
+        return u32::MAX;
+    }
+    if game.tick.is_multiple_of(holds[side as usize]) {
+        policy_action(side, slot)
+    } else if Controller::from_slot(genome_table(), slot).is_some() {
+        last[side as usize]
+    } else {
+        u32::MAX
+    }
+}
+
 #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
 pub extern "C" fn scripted_action(side: u32) -> u32 {
     policy_action(side, SCRIPTED_SLOT)
@@ -364,6 +439,9 @@ pub extern "C" fn state_hash() -> u64 {
 mod tests {
     use super::*;
     use std::sync::{Mutex, MutexGuard};
+
+    /// The output biases are the genome's last three values: forward, backward, jump.
+    const B2_INDEX: usize = GENOME_LEN - 3;
 
     /// The exports share static buffers; tests that call them take turns.
     fn exports_lock() -> MutexGuard<'static, ()> {
@@ -391,7 +469,7 @@ mod tests {
         let _guard = exports_lock();
         load(0, &[0.0; GENOME_LEN]);
         load(1, &[0.0; GENOME_LEN]);
-        let ticks = play_match(42, 0, 1, MAX_TICKS_CAP, 1);
+        let ticks = play_match(42, 0, 1, MAX_TICKS_CAP, 1, 1, 1);
         let r = result(0);
         assert_eq!(r.ticks, ticks);
         assert!(ticks > 0 && ticks <= MAX_TICKS_CAP);
@@ -407,12 +485,12 @@ mod tests {
         let _guard = exports_lock();
         load(0, &[0.0; GENOME_LEN]);
         let mut busy = [0.0f32; GENOME_LEN];
-        busy[512] = 1.0; // always forward
-        busy[514] = 1.0; // always jump
+        busy[B2_INDEX] = 1.0; // always forward
+        busy[B2_INDEX + 2] = 1.0; // always jump
         load(1, &busy);
-        play_match(7, 0, 1, 3000, 0);
+        play_match(7, 0, 1, 3000, 0, 1, 1);
         let first = result(0);
-        play_match(7, 0, 1, 3000, 0);
+        play_match(7, 0, 1, 3000, 0, 1, 1);
         assert_eq!(result(0), first);
 
         let jobs = unsafe { &mut *JOBS.ptr() };
@@ -420,20 +498,26 @@ mod tests {
             seed: 7,
             a: 0,
             b: 1,
+            hold_a: 1,
+            hold_b: 1,
         };
         jobs[1] = Job {
             seed: 8,
             a: 1,
             b: SCRIPTED_SLOT,
+            hold_a: 1,
+            hold_b: 1,
         };
         jobs[2] = Job {
             seed: 9,
             a: SCRIPTED_SLOT,
             b: SCRIPTED_SLOT,
+            hold_a: 1,
+            hold_b: 1,
         };
         assert_eq!(play_batch(3, 3000), 3);
         assert_eq!(result(0), first);
-        play_match(8, 1, SCRIPTED_SLOT, 3000, 0);
+        play_match(8, 1, SCRIPTED_SLOT, 3000, 0, 1, 1);
         let scripted = result(0);
         play_batch(2, 3000);
         assert_eq!(result(1), scripted);
@@ -442,11 +526,11 @@ mod tests {
     #[test]
     fn bad_jobs_are_flagged() {
         let _guard = exports_lock();
-        assert_eq!(play_match(1, TABLE_CAPACITY as u32, 0, 3000, 0), 0);
+        assert_eq!(play_match(1, TABLE_CAPACITY as u32, 0, 3000, 0, 1, 1), 0);
         assert_eq!(result(0), MatchResult::BAD_JOB);
-        assert_eq!(play_match(1, 0, 0, 0, 0), 0);
+        assert_eq!(play_match(1, 0, 0, 0, 0, 1, 1), 0);
         assert_eq!(result(0).flags, FLAG_BAD_JOB);
-        assert_eq!(play_match(1, 0, 0, MAX_TICKS_CAP + 1, 0), 0);
+        assert_eq!(play_match(1, 0, 0, MAX_TICKS_CAP + 1, 0, 1, 1), 0);
         assert_eq!(result(0).flags, FLAG_BAD_JOB);
 
         let jobs = unsafe { &mut *JOBS.ptr() };
@@ -454,16 +538,22 @@ mod tests {
             seed: 1,
             a: 0,
             b: 0,
+            hold_a: 1,
+            hold_b: 1,
         };
         jobs[1] = Job {
             seed: 1,
             a: 0,
             b: 5000,
+            hold_a: 1,
+            hold_b: 1,
         };
         jobs[2] = Job {
             seed: 1,
             a: 0,
             b: 0,
+            hold_a: 1,
+            hold_b: 1,
         };
         assert_eq!(play_batch(3, 100), 1);
         assert_eq!(result(1).flags, FLAG_BAD_JOB);
@@ -476,7 +566,7 @@ mod tests {
     fn short_match_ends_on_max_ticks() {
         let _guard = exports_lock();
         load(0, &[0.0; GENOME_LEN]);
-        assert_eq!(play_match(3, 0, 0, 10, 0), 10);
+        assert_eq!(play_match(3, 0, 0, 10, 0, 1, 1), 10);
         assert_eq!(result(0).flags, FLAG_MAX_TICKS);
     }
 
@@ -487,11 +577,13 @@ mod tests {
     /// new values, never edit these.
     #[test]
     fn golden_matches_since_version_1() {
-        let golden: Vec<f32> = (0..GENOME_LEN)
+        // The version 1 golden genome, padded into the version 3 layout: padding must
+        // not move a single hash.
+        let golden_v2: Vec<f32> = (0..policy::GENOME_LEN_V2)
             .map(|i| ((i * 37 % 101) as f32) / 50.0 - 1.0)
             .collect();
         let mut table = vec![0.0f32; 2 * GENOME_LEN];
-        table[GENOME_LEN..].copy_from_slice(&golden);
+        table[GENOME_LEN..].copy_from_slice(&policy::pad_v2(&golden_v2));
         let s = SCRIPTED_SLOT;
         let cases = [
             (1, s, s, 0xf2a999205120fb35, 2460, (5, 4)),
@@ -501,7 +593,7 @@ mod tests {
         ];
         for (seed, a, b, hash, ticks, points) in cases {
             let mut out = MatchResult::BAD_JOB;
-            run_match(&table, seed, a, b, MAX_TICKS_CAP, None, &mut out);
+            run_match(&table, seed, a, b, 3000, 1, 1, None, &mut out);
             assert_eq!(
                 (
                     out.final_hash,
@@ -527,7 +619,9 @@ mod tests {
                 seed,
                 SCRIPTED_SLOT,
                 SCRIPTED_SLOT,
-                MAX_TICKS_CAP,
+                3000,
+                1,
+                1,
                 None,
                 &mut out,
             );
@@ -548,17 +642,81 @@ mod tests {
             }
         }
         assert!(streaks > 12.0);
-        assert_eq!(desc_count(), 10);
+        assert_eq!(desc_count(), 11);
+        // Version 3 plays past training's 3,000 ticks, up to the cap.
+        assert_eq!(MAX_TICKS_CAP, 12_000);
+        run_match(
+            &table,
+            4,
+            SCRIPTED_SLOT,
+            SCRIPTED_SLOT,
+            6000,
+            1,
+            1,
+            None,
+            &mut out,
+        );
+        assert_eq!(out.flags & FLAG_BAD_JOB, 0);
+        assert!(out.ticks <= 6000);
+    }
+
+    #[test]
+    fn holds_repeat_actions_and_the_interactive_game_agrees() {
+        let _guard = exports_lock();
+        let v2: Vec<f32> = (0..policy::GENOME_LEN_V2)
+            .map(|i| ((i * 53 % 97) as f32) / 40.0 - 1.2)
+            .collect();
+        load(3, &policy::pad_v2(&v2));
+        for (ha, hb) in [(1, 1), (9, 1), (1, 9), (3, 7)] {
+            play_match(5, 3, SCRIPTED_SLOT, 3000, 0, ha, hb);
+            let expected = result(0);
+            reset(5);
+            assert_eq!(set_holds(ha, hb), 1);
+            let mut last = (u32::MAX, u32::MAX);
+            while is_done(3000) == 0 {
+                let t = unsafe { &*GAME.ptr() }.tick;
+                let (a, b) = (held_action(0, 3), held_action(1, SCRIPTED_SLOT));
+                if t % ha != 0 {
+                    assert_eq!(a, last.0, "tick {t}");
+                }
+                if t % hb != 0 {
+                    assert_eq!(b, last.1, "tick {t}");
+                }
+                set_actions(a, b);
+                step();
+                last = (a, b);
+            }
+            assert_eq!(state_hash(), expected.final_hash, "holds {ha} {hb}");
+        }
+        play_match(5, 3, SCRIPTED_SLOT, 3000, 0, 1, 1);
+        let at_1 = result(0).final_hash;
+        play_match(5, 3, SCRIPTED_SLOT, 3000, 0, 9, 1);
+        let at_9 = result(0);
+        assert_ne!(at_1, at_9.final_hash);
+        let jobs = unsafe { &mut *JOBS.ptr() };
+        jobs[0] = Job {
+            seed: 5,
+            a: 3,
+            b: SCRIPTED_SLOT,
+            hold_a: 9,
+            hold_b: 1,
+        };
+        assert_eq!(play_batch(1, 3000), 1);
+        assert_eq!(result(0), at_9);
+        assert_eq!(play_match(5, 3, SCRIPTED_SLOT, 3000, 0, 0, 1), 0);
+        assert_eq!(result(0).flags, FLAG_BAD_JOB);
+        assert_eq!(set_holds(0, 1), 0);
+        assert_eq!(job_bytes(), 24);
     }
 
     #[test]
     fn interactive_game_replays_a_match() {
         let _guard = exports_lock();
         let mut busy = [0.0f32; GENOME_LEN];
-        busy[512] = 0.5;
-        busy[514] = 1.0;
+        busy[B2_INDEX] = 0.5;
+        busy[B2_INDEX + 2] = 1.0;
         load(3, &busy);
-        play_match(99, 3, SCRIPTED_SLOT, 3000, 0);
+        play_match(99, 3, SCRIPTED_SLOT, 3000, 0, 1, 1);
         let expected = result(0);
 
         reset(99);

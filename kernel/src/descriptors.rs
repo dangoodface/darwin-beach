@@ -1,11 +1,12 @@
 //! The behaviour descriptors per side (docs/ABI.md), accumulated over every
 //! hashed tick of a match. They place a genome on the MAP-Elites grid. The first
-//! eight are kernel version 1's; version 2 adds two from the juggle tracker.
+//! eight are kernel version 1's; version 2 adds two from the juggle tracker and
+//! version 3 one more, spiked_points.
 
 use crate::juggle::Juggle;
 use crate::physics::{Agent, REF_U, REF_W, REF_WALL_WIDTH, SLIME_RADIUS, abs};
 
-pub const N_DESC: usize = 10;
+pub const N_DESC: usize = 11;
 
 /// `x*dir` at the back wall (22.5) and the depth of the own half (20.5): the
 /// own-half clamp runs from REF_WALL_WIDTH/2 + r = 2.0 at the net to
@@ -64,11 +65,13 @@ impl Descriptors {
         if won_point {
             self.points += 1;
         }
-        self.juggle.tick(agent.x, hit.is_some());
+        self.juggle
+            .tick(agent.x, agent.dir, hit.map(|(_, speed)| speed));
     }
 
     /// The ABI order: court_position, airtime, hits, mean_hit_height,
-    /// mean_speed_after_hit, jumps, distance, points, juggled_points, max_streak.
+    /// mean_speed_after_hit, jumps, distance, points, juggled_points, max_streak,
+    /// spiked_points.
     pub fn finish(&self, ticks: u32) -> [f64; N_DESC] {
         let per_tick = |sum: f64| if ticks == 0 { 0.0 } else { sum / ticks as f64 };
         let per_hit = |sum: f64| {
@@ -89,6 +92,7 @@ impl Descriptors {
             self.points as f64,
             self.juggle.juggled_points as f64,
             self.juggle.max_streak as f64,
+            self.juggle.spiked_points as f64,
         ]
     }
 }

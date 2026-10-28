@@ -18,7 +18,10 @@ import wasmtime
 
 from .sim import MASK64, N_DESC, MatchResult
 
-JOB_DTYPE = np.dtype([("seed", "<u8"), ("a", "<u4"), ("b", "<u4")])
+JOB_DTYPE = np.dtype([("seed", "<u8"), ("a", "<u4"), ("b", "<u4")])  # versions 1 and 2
+JOB_DTYPE_HOLDS = np.dtype(  # version 3: each side holds its action for this many ticks
+    [("seed", "<u8"), ("a", "<u4"), ("b", "<u4"), ("hold_a", "<u4"), ("hold_b", "<u4")]
+)
 
 
 def result_dtype(n_desc: int) -> np.dtype:
@@ -38,7 +41,8 @@ def result_dtype(n_desc: int) -> np.dtype:
 
 
 RESULT_DTYPE = result_dtype(N_DESC)  # version 1's layout
-assert JOB_DTYPE.itemsize == 16 and RESULT_DTYPE.itemsize == 152 and result_dtype(10).itemsize == 184
+assert JOB_DTYPE.itemsize == 16 and JOB_DTYPE_HOLDS.itemsize == 24
+assert RESULT_DTYPE.itemsize == 152 and result_dtype(10).itemsize == 184
 
 FLAG_NAN, FLAG_MAX_TICKS, FLAG_BAD_JOB = 1, 2, 4
 
@@ -111,6 +115,11 @@ class Kernel:
             self.desc_count = N_DESC
         self._result_dtype = result_dtype(self.desc_count)
         self.bad_job = bad_job(self.desc_count)
+        try:  # version 3 jobs carry holds; older modules have no job_bytes export
+            self.holds = u32("job_bytes") == JOB_DTYPE_HOLDS.itemsize
+        except KeyError:
+            self.holds = False
+        self._job_dtype = JOB_DTYPE_HOLDS if self.holds else JOB_DTYPE
         self._loaded = 0
 
     # ---- memory, in bulk -------------------------------------------------
@@ -145,30 +154,48 @@ class Kernel:
         # be stale genomes, so they are bad jobs here, as in FakeSimulator.
         return slot == self.scripted_slot or 0 <= slot < self._loaded
 
+    def _holds_ok(self, hold_a: int, hold_b: int) -> bool:
+        if hold_a == hold_b == 1:
+            return True
+        if not self.holds:
+            raise ValueError(f"kernel version {self.kernel_version} has no action holds (version 3 has)")
+        return 1 <= hold_a < 2**32 and 1 <= hold_b < 2**32
+
     def play(
-        self, seed: int, a: int, b: int, max_ticks: int = 3000, record_hashes: bool = False
+        self, seed: int, a: int, b: int, max_ticks: int = 3000, record_hashes: bool = False,
+        hold_a: int = 1, hold_b: int = 1,
     ) -> MatchResult:
-        if not (self._slot_ok(a) and self._slot_ok(b)):
+        """`hold_a`, `hold_b`: ticks each side holds its action (kernel version 3); 1 acts every tick."""
+        if not (self._slot_ok(a) and self._slot_ok(b) and self._holds_ok(hold_a, hold_b)):
             return self.bad_job
-        ticks = self._play_match(self._store, _i64(seed), _i32(a), _i32(b), _i32(max_ticks), int(record_hashes))
+        args = (_i64(seed), _i32(a), _i32(b), _i32(max_ticks), int(record_hashes))
+        if self.holds:
+            args += (_i32(hold_a), _i32(hold_b))
+        ticks = self._play_match(self._store, *args)
         result = self._results(1)[0]
         if record_hashes and not result.flags & FLAG_BAD_JOB:
             hashes = self._read(self._tick_hash_ptr, np.dtype("<u8"), ticks & 0xFFFFFFFF)
             result = result._replace(tick_hashes=tuple(hashes.tolist()))
         return result
 
-    def play_batch(self, jobs: list[tuple[int, int, int]], max_ticks: int = 3000) -> list[MatchResult]:
-        """Jobs are (seed, a, b); one result per job, in job order."""
+    def play_batch(self, jobs: list[tuple[int, ...]], max_ticks: int = 3000) -> list[MatchResult]:
+        """Jobs are (seed, a, b), or (seed, a, b, hold_a, hold_b) on kernel version 3;
+        one result per job, in job order."""
         results: list[MatchResult] = [self.bad_job] * len(jobs)
         if not 1 <= max_ticks <= self.max_ticks_cap:
             return results
-        todo = [i for i, (_, a, b) in enumerate(jobs) if self._slot_ok(a) and self._slot_ok(b)]
+        holds = [(j[3], j[4]) if len(j) == 5 else (1, 1) for j in jobs]
+        todo = [i for i, j in enumerate(jobs)
+                if self._slot_ok(j[1]) and self._slot_ok(j[2]) and self._holds_ok(*holds[i])]
         while todo:
             chunk, todo = todo[: self.batch_capacity], todo[self.batch_capacity :]
-            buf = np.empty(len(chunk), dtype=JOB_DTYPE)
+            buf = np.empty(len(chunk), dtype=self._job_dtype)
             buf["seed"] = [jobs[i][0] & MASK64 for i in chunk]
             buf["a"] = [jobs[i][1] & 0xFFFFFFFF for i in chunk]
             buf["b"] = [jobs[i][2] & 0xFFFFFFFF for i in chunk]
+            if self.holds:
+                buf["hold_a"] = [holds[i][0] for i in chunk]
+                buf["hold_b"] = [holds[i][1] for i in chunk]
             self._write(self._jobs_ptr, buf)
             done = self._play_batch(self._store, len(chunk), max_ticks) & 0xFFFFFFFF
             # Every slot was checked above, so the kernel only stops early on a
@@ -195,16 +222,21 @@ class Kernel:
 
     # ---- the interactive game, as the page drives it ---------------------
 
-    def replay(self, seed: int, a: int, b: int, max_ticks: int = 3000) -> tuple[int, int]:
-        """Plays a match through reset, policy_action, set_actions and step, the
-        way the page replays one, and returns (ticks, final hash). It must
-        agree with `play`; tests hold the two together."""
-        call = {name: self._exports[name] for name in ("reset", "is_done", "policy_action", "set_actions", "step")}
+    def replay(self, seed: int, a: int, b: int, max_ticks: int = 3000, hold_a: int = 1,
+               hold_b: int = 1) -> tuple[int, int]:
+        """Plays a match through reset, (set_holds,) held_action or policy_action,
+        set_actions and step, the way the page replays one, and returns (ticks,
+        final hash). It must agree with `play`; tests hold the two together."""
+        self._holds_ok(hold_a, hold_b)
+        act = "held_action" if self.holds else "policy_action"
+        call = {name: self._exports[name] for name in ("reset", "is_done", act, "set_actions", "step")}
         st = self._store
         call["reset"](st, _i64(seed))
+        if self.holds and self._exports["set_holds"](st, _i32(hold_a), _i32(hold_b)) != 1:
+            raise ValueError(f"the kernel refused holds {hold_a}, {hold_b}")
         while not call["is_done"](st, max_ticks):
-            action_a = call["policy_action"](st, 0, _i32(a))
-            action_b = call["policy_action"](st, 1, _i32(b))
+            action_a = call[act](st, 0, _i32(a))
+            action_b = call[act](st, 1, _i32(b))
             if action_a < 0 or action_b < 0:
                 raise ValueError(f"policy_action refused slot {a} or {b}")
             call["set_actions"](st, action_a, action_b)

@@ -10,10 +10,12 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from arena.genome import genome_id, random_params  # noqa: E402
-from arena.kernel import Kernel, find_kernel  # noqa: E402
+from arena.kernel import Kernel  # noqa: E402
 
-KERNEL = find_kernel()
-pytestmark = pytest.mark.skipif(KERNEL is None, reason="no kernel: build it (README) or set ARENA_KERNEL")
+# The PPO brain is kernel version 2's 12-32-3 net, so these tests run on that kernel;
+# version 3 runs take its genomes padded (arena.genome.pad_params) like any old genome.
+KERNEL = ROOT / "artifacts/kernel/93c29e323d3d1d7874286754ae395de50a8e3932b20cd75aa77787ce4387ebfb.wasm"
+pytestmark = pytest.mark.skipif(not KERNEL.exists(), reason="the version 2 kernel artifact is missing")
 
 from species.ppo import policy as P  # noqa: E402
 from species.ppo.rollout import COACH, MatchRunner  # noqa: E402
