@@ -16,11 +16,14 @@ N_DESC = 8
 DESCRIPTOR_NAMES = ("court_position", "airtime", "hits", "mean_hit_height", "mean_speed_after_hit",
                     "jumps", "distance", "points")  # docs/ABI.md order, kernel version 1
 DESCRIPTOR_NAMES_V2 = DESCRIPTOR_NAMES + ("juggled_points", "max_streak")  # kernel version 2 adds two
+DESCRIPTOR_NAMES_V3 = DESCRIPTOR_NAMES_V2 + ("spiked_points",)  # kernel version 3 adds one
 
 
 def descriptor_names(kernel_version: int) -> tuple[str, ...]:
     """The descriptors a kernel version reports per side; the fake (version 0) reports eight."""
-    return DESCRIPTOR_NAMES_V2 if kernel_version >= 2 else DESCRIPTOR_NAMES
+    if kernel_version >= 3:
+        return DESCRIPTOR_NAMES_V3
+    return DESCRIPTOR_NAMES_V2 if kernel_version == 2 else DESCRIPTOR_NAMES
 MASK64 = (1 << 64) - 1
 SCRIPTED_SLOT = 0xFFFFFFFF  # ABI: this slot index means the kernel's scripted bot
 SCRIPTED_ID = "scripted-v1"  # its id in our files; there is no genome file for it
@@ -32,7 +35,7 @@ class MatchResult(NamedTuple):
     points_a: int
     points_b: int
     flags: int
-    desc_a: tuple[float, ...]  # ABI order: 8 values, 10 from kernel version 2
+    desc_a: tuple[float, ...]  # ABI order: 8 values, 10 in kernel version 2, 11 from version 3
     desc_b: tuple[float, ...]
     tick_hashes: tuple[int, ...] | None  # only when record_hashes
 
@@ -47,11 +50,13 @@ class Simulator(Protocol):
         """Shape (n, genome_len), float32, slot i = row i."""
 
     def play(
-        self, seed: int, a: int, b: int, max_ticks: int = 3000, record_hashes: bool = False
-    ) -> MatchResult: ...
+        self, seed: int, a: int, b: int, max_ticks: int = 3000, record_hashes: bool = False,
+        hold_a: int = 1, hold_b: int = 1,
+    ) -> MatchResult:
+        """`hold_a`, `hold_b`: ticks each side holds its action (kernel version 3); 1 acts every tick."""
 
-    def play_batch(self, jobs: list[tuple[int, int, int]], max_ticks: int = 3000) -> list[MatchResult]:
-        """Jobs are (seed, a, b), slot indexes into the loaded table."""
+    def play_batch(self, jobs: list[tuple[int, ...]], max_ticks: int = 3000) -> list[MatchResult]:
+        """Jobs are (seed, a, b) or (seed, a, b, hold_a, hold_b), slot indexes into the loaded table."""
 
 
 def _u64(*parts: bytes) -> int:
@@ -120,13 +125,16 @@ class FakeSimulator:
         return None
 
     def play(
-        self, seed: int, a: int, b: int, max_ticks: int = 3000, record_hashes: bool = False
+        self, seed: int, a: int, b: int, max_ticks: int = 3000, record_hashes: bool = False,
+        hold_a: int = 1, hold_b: int = 1,
     ) -> MatchResult:
         ra, rb = self._slot(a), self._slot(b)
-        if ra is None or rb is None:
+        if ra is None or rb is None or hold_a < 1 or hold_b < 1:
             return MatchResult(0, 0, 0, 0, 4, (0.0,) * N_DESC, (0.0,) * N_DESC, None)
         (dig_a, str_a, desc_a), (dig_b, str_b, desc_b) = ra, rb
         h = _splitmix(seed & MASK64 ^ _splitmix(dig_a) ^ (_splitmix(dig_b) << 1 & MASK64))
+        if (hold_a, hold_b) != (1, 1):  # a held side plays a different match; holds of 1 change nothing
+            h = _splitmix(h ^ (hold_a << 32 | hold_b))
         ticks = 300 + h % max(1, min(max_ticks, 3000) - 299)
         edge = (str_a - str_b) * 4.0  # roughly +-1 for typical genomes
         noise = ((h >> 20) & 0xFFFF) / 65535.0 - 0.5  # [-0.5, 0.5]
@@ -153,5 +161,5 @@ class FakeSimulator:
             tick_hashes=hashes,
         )
 
-    def play_batch(self, jobs: list[tuple[int, int, int]], max_ticks: int = 3000) -> list[MatchResult]:
-        return [self.play(s, a, b, max_ticks) for s, a, b in jobs]
+    def play_batch(self, jobs: list[tuple[int, ...]], max_ticks: int = 3000) -> list[MatchResult]:
+        return [self.play(j[0], j[1], j[2], max_ticks, False, *j[3:5]) for j in jobs]

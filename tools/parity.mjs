@@ -7,7 +7,8 @@
 //   node tools/parity.mjs <kernel.wasm> --text < input.bin
 //
 // Input (little-endian): u32 genome count, u32 job count, u32 max_ticks,
-// then genome_len f32 per genome, then 16-byte jobs (u64 seed, u32 a, u32 b).
+// then genome_len f32 per genome, then jobs of job_bytes() bytes (u64 seed,
+// u32 a, u32 b, and from version 3 u32 hold_a, u32 hold_b; 16 bytes before).
 // Output per job: u32 ticks, u32 flags, u64 final hash, the whole result block
 // (24 + 16 * desc_count bytes: descriptors included), then ticks u64 tick hashes.
 // --text prints "job tick hash" lines instead, for reading by eye.
@@ -24,6 +25,7 @@ const { instance } = await WebAssembly.instantiate(readFileSync(wasmPath), {});
 const k = instance.exports;
 const genomeLen = k.genome_len();
 const blockBytes = 24 + 16 * (k.desc_count ? k.desc_count() : 8); // version 1 has eight, and no export
+const jobBytes = k.job_bytes ? k.job_bytes() : 16; // 24 with holds, from version 3
 
 const input = readFileSync(0);
 const head = new DataView(input.buffer, input.byteOffset, input.byteLength);
@@ -32,8 +34,8 @@ const nJobs = head.getUint32(4, true);
 const maxTicks = head.getUint32(8, true);
 const genomeBytes = nGenomes * genomeLen * 4;
 const jobsAt = 12 + genomeBytes;
-if (input.byteLength !== jobsAt + nJobs * 16) {
-  console.error(`input is ${input.byteLength} bytes, expected ${jobsAt + nJobs * 16}`);
+if (input.byteLength !== jobsAt + nJobs * jobBytes) {
+  console.error(`input is ${input.byteLength} bytes, expected ${jobsAt + nJobs * jobBytes}`);
   process.exit(2);
 }
 
@@ -42,11 +44,14 @@ new Uint8Array(k.memory.buffer).set(input.subarray(12, jobsAt), k.genome_table_p
 
 const chunks = [];
 for (let j = 0; j < nJobs; j++) {
-  const at = jobsAt + j * 16;
+  const at = jobsAt + j * jobBytes;
   const seed = head.getBigUint64(at, true); // wasm wraps a BigInt to i64 itself
   const a = head.getUint32(at + 8, true); // 0xFFFFFFFF wraps to the i32 -1, the same bits
   const b = head.getUint32(at + 12, true);
-  const ticks = k.play_match(seed, a, b, maxTicks, 1) >>> 0;
+  const ticks =
+    (jobBytes === 24
+      ? k.play_match(seed, a, b, maxTicks, 1, head.getUint32(at + 16, true), head.getUint32(at + 20, true))
+      : k.play_match(seed, a, b, maxTicks, 1)) >>> 0;
   const mem = new DataView(k.memory.buffer);
   const results = k.results_ptr();
   const flags = mem.getUint32(results + 20, true);

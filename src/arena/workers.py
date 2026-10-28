@@ -14,7 +14,7 @@ import numpy as np
 
 from .sim import MatchResult, Simulator
 
-Job = tuple[int, int, int]  # (seed, slot a, slot b)
+Job = tuple[int, ...]  # (seed, slot a, slot b), or (seed, a, b, hold_a, hold_b) on kernel version 3
 
 
 class SimInfo(NamedTuple):
