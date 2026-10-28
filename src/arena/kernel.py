@@ -120,6 +120,10 @@ class Kernel:
         except KeyError:
             self.holds = False
         self._job_dtype = JOB_DTYPE_HOLDS if self.holds else JOB_DTYPE
+        try:  # exploration builds (plan B4) play the oracle's rung i at oracle_slot_base + i
+            self.oracle_slot_base, self.oracle_rungs = u32("oracle_slot_base"), u32("oracle_rungs")
+        except KeyError:
+            self.oracle_slot_base, self.oracle_rungs = 0, 0
         self._loaded = 0
 
     # ---- memory, in bulk -------------------------------------------------
@@ -149,10 +153,16 @@ class Kernel:
         self._write(self._table_ptr, table)
         self._loaded = table.shape[0]
 
+    def oracle_rung(self, rung: int) -> tuple[int, float]:
+        """An oracle build's rung: its perception delay in ticks and its aim noise."""
+        return (self._exports["oracle_rung_delay"](self._store, rung) & 0xFFFFFFFF,
+                self._exports["oracle_rung_noise"](self._store, rung))
+
     def _slot_ok(self, slot: int) -> bool:
         # The kernel only knows its 1,024 slots; rows past the last load would
         # be stale genomes, so they are bad jobs here, as in FakeSimulator.
-        return slot == self.scripted_slot or 0 <= slot < self._loaded
+        oracle = 0 <= slot - self.oracle_slot_base < self.oracle_rungs
+        return slot == self.scripted_slot or 0 <= slot < self._loaded or oracle
 
     def _holds_ok(self, hold_a: int, hold_b: int) -> bool:
         if hold_a == hold_b == 1:
