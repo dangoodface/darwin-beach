@@ -36,9 +36,9 @@ from .workers import Workers
 # Output layer of the 12-32-3 genome (kernel/src/policy.rs): W2[3][32] at 416, b2[3] at 512.
 # Output i is button i (bit 0 forward, bit 1 backward, bit 2 jump), pressed when the output is above zero.
 W2, B2, JUMP = 416, 512, 2
-EXTRA_NAMES = ("juggled_points", "max_streak")  # descriptors 8 and 9, kernel version 2
+EXTRA_NAMES = ("juggled_points", "max_streak", "spiked_points")  # kernel v2 adds two, v3 (28 October) a third  # descriptors 8 and 9, kernel version 2
 STYLES = ("flat_earther", "kangaroo", "long_ball", "lob_artist", "sprinter", "all_rounder", "joga_bonito",
-          "spiker", "dinker", "one_touch", "lazy", "assassin")  # 28 October: gap styles, request styles, assassins
+          "spiker", "dinker", "one_touch", "lazy", "assassin", "clavada")  # 28 October: gap and request styles, assassins
 WINDOW_STYLES = ("long_ball", "lob_artist", "spiker", "dinker")  # a window on hit speed and height, from [window.<name>]
 NO_TWIN = ("all_rounder", "assassin")  # nothing to remove: they are the plain margin against their rivals
 
@@ -46,10 +46,15 @@ NO_TWIN = ("all_rounder", "assassin")  # nothing to remove: they are the plain m
 # ------------------------------------------------------------------ styles
 
 def pin_jump(params: np.ndarray, on: bool) -> np.ndarray:
-    """The jump output's weights zeroed and its bias set to +1 (always pressed) or -1 (never)."""
+    """The jump output's weights zeroed and its bias set to +1 (always pressed) or -1 (never).
+    Offsets follow the genome's own width (12-H-3: 16H + 3 values; H is 32 in kernel v2, 64 in v3)."""
     p = np.array(params, dtype=np.float32, copy=True)
-    p[W2 + JUMP * N_HID : W2 + (JUMP + 1) * N_HID] = 0.0
-    p[B2 + JUMP] = 1.0 if on else -1.0
+    n_hid = (len(p) - 3) // 16
+    if 16 * n_hid + 3 != len(p):
+        raise ValueError(f"a 12-H-3 genome has 16H + 3 values, not {len(p)}")
+    w2, b2 = 13 * n_hid, 16 * n_hid
+    p[w2 + JUMP * n_hid : w2 + (JUMP + 1) * n_hid] = 0.0
+    p[b2 + JUMP] = 1.0 if on else -1.0
     return p
 
 
@@ -131,6 +136,7 @@ class SpecialistConfig:
     joga_bonus: float = 0.25
     joga_min_fraction: float = 1 / 3
     coach_gate: bool = True  # 28 October: a candidate that loses to the coach scores below every one that does not
+    clavada_min_fraction: float = 1 / 3  # clavada: at least this share of points won are spiked at the net
     lazy_fraction: float = 0.5  # lazy: free travel up to this fraction of the start's travel per tick
     lazy_lambda: float = 2.0  # lazy: points of fitness lost per cap-width of travel above the cap
     lazy_cap: float | None = None  # set from the start genome when training begins
@@ -152,6 +158,7 @@ def load_config(path: str | Path) -> SpecialistConfig:
         joga_bonus=t.get("joga", {}).get("bonus", 0.25),
         joga_min_fraction=t.get("joga", {}).get("min_fraction", 1 / 3),
         coach_gate=t.get("gate", {}).get("coach", True),
+        clavada_min_fraction=t.get("clavada", {}).get("min_fraction", 1 / 3),
         lazy_fraction=t.get("lazy", {}).get("cap_fraction", 0.5), lazy_lambda=t.get("lazy", {}).get("lambda", 2.0))
     if c.population < 2 or c.population % 2:
         raise ValueError("es.population must be even (antithetic pairs)")
@@ -182,6 +189,9 @@ def make_style(name: str, cfg: SpecialistConfig, twin: bool = False) -> Style:
         s = Style(name, window=Window((Bound("juggled_points", hi=0.0, scale=1.0),)), descriptors=10)
     elif name == "lazy":  # the least travel that still wins: a soft cap on distance per tick
         s = Style(name, fitness="lazy")
+    elif name == "clavada":  # Daniel's: carry the ball to the net and spike it; a third of points won that way (kernel v3)
+        s = Style(name, window=Window((Bound("spiked_points", lo_of=("points", cfg.clavada_min_fraction),
+                                             scale=max(1.0, 5 * cfg.clavada_min_fraction)),)), descriptors=11)
     elif name == "sprinter":
         s = Style(name, fitness="sprinter")
     elif name == "all_rounder":
@@ -359,7 +369,10 @@ def pick_start(style: Style, cfg: SpecialistConfig) -> tuple[str, str, list[int]
         if style.name == "kangaroo":
             return c["bd"][1] >= 0.9
         if style.window is not None and c.get("desc"):
-            return style.window.satisfied(dict(zip(desc_names(len(c["desc"])), c["desc"])))
+            names = desc_names(len(c["desc"]))
+            if any(b.name not in names for b in style.window.bounds):  # the export predates this descriptor
+                return False
+            return style.window.satisfied(dict(zip(names, c["desc"])))
         return False
 
     if style.name in ("flat_earther", "kangaroo") or (style.window is not None and style.name != "joga_bonito"):
