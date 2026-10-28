@@ -81,3 +81,15 @@ def test_config_accepts_bot_pool_entries():
     assert c.ladder_pool[0]["bot"] == "oracle-v1-rung2"
     with pytest.raises(ValueError):
         Config.from_dict({"slug": "t", "seed": 1, "ladder": {"enabled": True, "pool": [{"label": "no path"}]}})
+
+
+def test_promotion_only_members_are_not_played_by_candidates():
+    from arena.evaluate import Evaluator
+
+    g = _genome_member(1)
+    rung = Member("oracle-v1-rung2", "oracle", 2000.0, 0, None, label="rung 2", slot=7, fitness=False)
+    ladder = Ladder(99, (1,), pool=[g, rung])
+    ev = Evaluator(None, [], 99, (1,), (0, 1), ladder=ladder)
+    extra, genomes = ev._ladder_opponents()
+    assert [oid for oid, _ in extra] == [g.id] and len(genomes) == 1  # the coach is a probe already; the rung is skipped
+    assert load_pool([{"bot": "oracle-v1-rung2", "fitness": False}], K, 4, {"oracle-v1-rung2": 7})[0].fitness is False

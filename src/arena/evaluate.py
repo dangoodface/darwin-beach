@@ -71,7 +71,7 @@ class Evaluator:
         extra: list[tuple[str, int]] = []
         genomes: list[Genome] = []
         for m in self.ladder.members:
-            if m.id in have:
+            if m.id in have or not m.fitness:  # promotion-only members (oracle rungs) are not played here
                 continue
             if m.genome is None:
                 extra.append((m.id, m.slot))

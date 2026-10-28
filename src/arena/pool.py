@@ -51,7 +51,9 @@ def load_pool(entries: Sequence[dict], kernel_sha: str, genome_len: int,
     """Each entry is {path, label, id}: the genome file, the name the page shows and
     the id it had where it came from; or (28 October) {bot, label}: a scripted bot the
     build exports, by name (`bots` maps names to slots), played from its slot, kind
-    "oracle" for the oracle rungs. Ratings are provisional until Ladder.rate_pool."""
+    "oracle" for the oracle rungs; `fitness = false` keeps a costly member out of every
+    candidate's matches (it is still rated and faced in promotion checks). Ratings are
+    provisional until Ladder.rate_pool."""
     members = []
     for e in entries:
         if "bot" in e:
@@ -59,7 +61,8 @@ def load_pool(entries: Sequence[dict], kernel_sha: str, genome_len: int,
             if not bots or name not in bots:
                 raise ValueError(f"the simulator has no scripted bot {name!r}")
             kind = "oracle" if name.startswith("oracle") else "scripted"
-            members.append(Member(name, kind, ANCHOR_RATING, 0, None, label=e.get("label", name), slot=bots[name]))
+            members.append(Member(name, kind, ANCHOR_RATING, 0, None, label=e.get("label", name), slot=bots[name],
+                                  fitness=bool(e.get("fitness", True))))
             continue
         g = make_genome(read_params(resolve(e["path"]), genome_len), kernel_sha, (), "pool", -1)
         members.append(Member(g.id, "pool", ANCHOR_RATING, 0, g, label=e.get("label"), source=e.get("id")))

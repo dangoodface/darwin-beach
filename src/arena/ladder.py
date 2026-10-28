@@ -101,6 +101,7 @@ class Member:
     label: str | None = None  # pool members: the name the page shows
     source: str | None = None  # pool members: the id the genome had where it came from
     slot: int | None = None  # members without a genome (the coach, an oracle rung): the simulator slot that plays them
+    fitness: bool = True  # False: rated and faced in promotion checks, but not played by every candidate (costly rungs)
 
 
 @dataclass(frozen=True)
