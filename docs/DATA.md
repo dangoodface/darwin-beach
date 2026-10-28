@@ -211,19 +211,25 @@ members' mean margins weighted by `10 ** ((rating - top) / scale)`.
 ## definitive.json (run 6)
 
 Written by `python -m arena.definitive <run_id>` after a run: every member
-of its ladder, old and new, in a round robin on held-out serves (a stream
-the run never drew from), rated jointly with the anchor at 1000 and ranked.
+of its ladder, old and new, plus the run's top `--elites` live cells by
+archive rating (default 6, kind `elite`, labelled "run 6 elite #1 (gen
+6929)"), in a round robin on held-out serves (a stream the run never drew
+from), rated jointly with the anchor at 1000 and ranked. The elites are
+there so a run that promoted nobody still gets a verdict.
 
 ```json
-{"run_id": "…", "seeds": ["…"], "matches_per_pair": 32, "champion": "…",
- "members_beaten": 23, "of": 24,
+{"run_id": "…", "seeds": ["…"], "matches_per_pair": 32, "elites": 6, "champion": "…",
+ "members_beaten": 23, "of": 29,
  "fresh": {"<member id>": {"label": "…", "kind": "pool", "won": 30, "n": 32, "margin": 4.1}},
+ "top": {"id": "…", "label": "…", "kind": "elite", "rating": 1900.0, "beaten": 27, "of": 29, "record": {"<id>": {}}},
  "leaderboard": [{"rank": 1, "id": "…", "label": "…", "kind": "champion", "rating": 1900.0, "run_rating": 1880.0}],
  "matrix": {"ids": ["…"], "winrate": [[null, 0.9], [0.1, null]]}}
 ```
 
-`fresh` is the champion's record against each other member; `run_rating`
-is the rating the member held in the run's ladder, for comparison.
+`fresh` is the run champion's record against each other entrant and `top`
+the held-out leader's (`record` has the same shape as `fresh`); `run_rating`
+is the rating the entrant held in the run (ladder rating, or archive rating
+for an elite), for comparison.
 
 ## genomes/<id>.bin
 

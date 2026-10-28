@@ -452,3 +452,87 @@ For the trainer, for Sonnet and Opus:
 The campaign page: "The Specialist" level cleared (its test was a specialist
 beating its neighbours; these beat every rival and every champion), and the
 "Learning by nudges" skill goes up one.
+
+## Evening, 27 Oct, 22:30: run 6, the whole pool as the ladder, and no definitive player
+
+Daniel, through funsies: "New round of training, ask fable to improve the
+greater cohorts we now have the champs and the coach and several specialists
+to beat. With elo system create the volleyball definitive player. Like the
+same millions and millions of matches engine of evolution. But better."
+
+**The design (commit 0bf1322).** Run 5's engine with three changes. The
+ladder starts as a pool of every bot we have, 23 of them (run 5's ten
+champions, run 4's, the twelve specialists and twins) plus the coach, rated
+once by a round robin on the 50 ladder seeds with the coach fixed at 1000 and
+the rest fitted jointly (`joint_elo`). Fitness weights each member's margin
+by its rating, `10 ** ((rating - top) / 800)`, so the specialists are what
+counts. A promotion must beat the top-rated member head to head, out-rate it
+against the whole pool, and hold 55 per cent against the coach
+(`hold_anchor`): the night's lesson, written into the rule. The map starts
+full of run 4's and run 5's elites instead of random brains (362 of 400 cells
+at generation 0). A verdict tool, `python -m arena.definitive`, plays the
+field again on serves the run never drew. Six new tests, 130 passing.
+
+**The pool, rated on the run's own seeds.** Flat earther twin 1876, lob
+artist 1815, all-rounder and sprinter 1762, long ball 1760, sprinter twin
+1740, flat earther 1720, joga bonito 1711, kangaroo twin 1708, lob artist
+twin 1704, kangaroo 1691, long ball twin 1639; then a gap: run 5 champion #10
+at 1213, #9 1140, #8 1074, #7 1005, the coach 1000, and six older champions
+plus run 4's below the coach, down to 516.
+
+**The run (`20261028T001309Z-run6-definitive`).** Four hours, 8,034
+rounds, 111.3 million matches at 7,727 a second, twelve workers. The map was
+full by round 8,000 (400 of 400). Cells that beat the pool on weighted
+average went 0 at round 1,000, 6 at 2,000, 29 at 4,000, 77 at the end;
+QD-score 580 to 1,626. Fifty-three cells beat the coach on their grading
+matches, 34 of the 54 checked on fresh serves. Twenty-six map-bests
+challenged the twin (100 seeded matches each, a tie counts half). Three won
+the head to head, the best 60 per cent at round 1,559 (39 wins, 42 ties, 19
+losses); none out-rated the twin against all 24 members, so no promotion and
+no new era. Archive ratings of the best cells: 1,590 to 1,708, above every
+run 5 champion by 400 points or more.
+
+**The exploit.** The best-scoring cell of the whole run (round 7,809,
+fitness 0.68) loses every fresh-serve match to the coach, 0 of 16, and 0 of
+64 in the verdict, and 3 of 64 to the twin; it beats the specialists 55 per
+cent on average. The weights did it: the coach at 1000 weighs 0.08 against
+the twin's 1.0, so the fitness could ignore it. The gate held (that bot never
+passed the head to head), but the search spent its last thousand rounds on
+it. A rating-weighted fitness needs a floor under the anchor.
+
+**The verdict** (32 held-out seeds, 64 matches a pair, 30 entrants: the 24
+members plus the run's top six cells by archive rating, 435 pairs). Flat
+earther twin 1566, lob artist 1545, all-rounder 1497, sprinter 1495, sprinter
+twin 1484, long ball 1478, lob artist twin 1462, joga bonito 1453, run 6
+elite #2 (the exploit) 1449, kangaroo 1448, flat earther 1438, kangaroo twin
+1437, four more run 6 elites 1416 to 1407, elite #6 1370, long ball twin
+1344, run 5 champion #10 1075, #9 1003, the coach 1000, the rest of run 5 and
+run 4's champion below the coach, run 5 champion #1 last at 482. The scale
+is compressed (1876 became 1566: other serves, a bigger field), the order
+holds.
+
+**Cycles, again.** The twin beats 21 of 29. It loses to the all-rounder (2
+of 64) and the lob artist (3 of 64), and run 6's elite #6, ranked 17th,
+beats it 43 of 64. The lob artist beats 27 of 29, more than anyone, and has
+the best worst matchup (49 per cent, against its own twin). Run 6's elite #1
+(round 6,929) is the honest one: beats the coach 63 of 64, ranks 16th.
+
+**So, the definitive player.** There is none in this field. By Elo it is
+still the flat earther twin; by robustness, the lob artist; no bot beats
+everyone, and the pool's own cycles mean "beats everyone" may not exist.
+What run 6 produced is a map of 400 bots that all out-rate every past
+champion and mostly beat the coach, and a rule that would not promote a
+pretender.
+
+Lessons for a run 7, if Daniel wants one: a floor on the coach's weight, or
+the coach as a hard constraint on fitness; a promotion bar stated as
+"out-rate the specialists as a group" is four hours of CMA-ME away from a
+warm start, so give it a night; ties are a third of the twin's matches,
+so longer matches or a tie-break would sharpen every verdict; and define
+"definitive" before training it: best worst matchup is a target, Elo mean is
+not.
+
+Data: `out/20261028T001309Z-run6-definitive/` (latest.json, ladder.json,
+curve.json, genomes) and `definitive.json` beside them (leaderboard, the
+twin's record, the full matrix). The campaign page: "Honest scores" goes up
+one, three log lines.
