@@ -38,7 +38,7 @@ from .workers import Workers
 W2, B2, JUMP = 416, 512, 2
 EXTRA_NAMES = ("juggled_points", "max_streak", "spiked_points")  # kernel v2 adds two, v3 (28 October) a third  # descriptors 8 and 9, kernel version 2
 STYLES = ("flat_earther", "kangaroo", "long_ball", "lob_artist", "sprinter", "all_rounder", "joga_bonito",
-          "spiker", "dinker", "one_touch", "lazy", "assassin", "clavada")  # 28 October: gap and request styles, assassins
+          "spiker", "dinker", "one_touch", "lazy", "assassin", "clavada", "smooth_operator")  # 28 October
 WINDOW_STYLES = ("long_ball", "lob_artist", "spiker", "dinker")  # a window on hit speed and height, from [window.<name>]
 NO_TWIN = ("all_rounder", "assassin")  # nothing to remove: they are the plain margin against their rivals
 
@@ -198,6 +198,8 @@ def make_style(name: str, cfg: SpecialistConfig, twin: bool = False) -> Style:
         s = Style(name, fitness="min")
     elif name == "assassin":  # the plain mean margin; the rivals (one target, the coach as the gate) are the style
         s = Style(name)
+    elif name == "smooth_operator":  # Daniel's: a decision every 9 ticks (--hold 9, kernel v3), human reflexes; the twin holds 1
+        s = Style(name)
     else:  # joga_bonito
         s = Style(name, window=Window((Bound("juggled_points", lo_of=("points", cfg.joga_min_fraction),
                                              scale=max(1.0, 5 * cfg.joga_min_fraction)),)),
@@ -236,9 +238,10 @@ class Matches:
 
 class Arena:
     def __init__(self, workers: Workers, rival_params: list[np.ndarray | None], scripted_slot: int | None,
-                 max_ticks: int) -> None:
-        """`rival_params[r]` is a genome, or None for the scripted bot."""
-        self.workers, self.max_ticks = workers, max_ticks
+                 max_ticks: int, hold: int = 1) -> None:
+        """`rival_params[r]` is a genome, or None for the scripted bot. `hold` > 1 (kernel v3): the candidate
+        decides every `hold` ticks and repeats its action in between; rivals always decide every tick."""
+        self.workers, self.max_ticks, self.hold = workers, max_ticks, hold
         self.genomes = [p for p in rival_params if p is not None]
         self.slots, k = [], 0
         for p in rival_params:
@@ -259,8 +262,12 @@ class Arena:
         for i in range(n):
             for opp in self.slots:
                 for s in seeds:
-                    jobs.append((s, base + i, opp))
-                    jobs.append((s, opp, base + i))
+                    if self.hold == 1:
+                        jobs.append((s, base + i, opp))
+                        jobs.append((s, opp, base + i))
+                    else:
+                        jobs.append((s, base + i, opp, self.hold, 1))
+                        jobs.append((s, opp, base + i, 1, self.hold))
         res = self.workers.play(table.astype(np.float32), jobs, self.max_ticks)
         self.matches_total += len(jobs)
         D = len(res[0].desc_a)
@@ -417,13 +424,16 @@ def fresh_verdict(style: Style, cfg: SpecialistConfig, m: Matches, names: tuple[
             "stalled": points < 2.0}
 
 
-def showcase(m: Matches, names: tuple[str, ...], rival_ids: list[str], seeds: tuple[int, ...], per_rival: int = 2) -> list:
+def showcase(m: Matches, names: tuple[str, ...], rival_ids: list[str], seeds: tuple[int, ...], per_rival: int = 2,
+             hold: int = 1) -> list:
+    """The best two fresh matches per rival, as replays: seed, side, rival, and the holds of side A and B."""
     out = []
     for r, rid in enumerate(rival_ids):
         cand = sorted(((float(m.mine[0, r, s, side] - m.theirs[0, r, s, side]), s, side)
                        for s in range(len(seeds)) for side in (0, 1)), reverse=True)[:per_rival]
         for margin, s, side in cand:
             out.append({"seed": _json_seed(seeds[s]), "side": "AB"[side], "rival_id": rid, "margin": margin,
+                        "hold_a": hold if side == 0 else 1, "hold_b": hold if side == 1 else 1,
                         "descriptors": dict(zip(names, (float(x) for x in m.desc[0, r, s, side])))})
     return out
 
@@ -432,13 +442,13 @@ def showcase(m: Matches, names: tuple[str, ...], rival_ids: list[str], seeds: tu
 
 def train(style: Style, cfg: SpecialistConfig, workers: Workers, rival_params, rival_ids, scripted_slot,
           start: np.ndarray, minutes: float | None, generations: int | None, log=print,
-          weights: np.ndarray | None = None, coach: int | None = None) -> dict:
+          weights: np.ndarray | None = None, coach: int | None = None, hold: int = 1) -> dict:
     root = np.random.SeedSequence(cfg.seed)
     train_ss, graded_ss, fresh_ss = root.spawn(3)
     train_rng = np.random.default_rng(train_ss)
     graded = tuple(int(s) for s in graded_ss.generate_state(cfg.graded_seeds, dtype=np.uint64))
     fresh = tuple(int(s) for s in fresh_ss.generate_state(cfg.fresh_seeds, dtype=np.uint64))
-    arena = Arena(workers, rival_params, scripted_slot, cfg.max_ticks)
+    arena = Arena(workers, rival_params, scripted_slot, cfg.max_ticks, hold)
     rng = np.random.default_rng(np.random.SeedSequence(cfg.seed + 1))  # perturbations; the twin sees the same ones
     names = None
 
@@ -498,10 +508,11 @@ def resolve_genome(path: str, root: Path) -> np.ndarray:
 def run_specialist(style_name: str, twin: bool, cfg: SpecialistConfig, minutes: float | None, workers_n: int,
                    generations: int | None = None, root: Path | None = None, now: datetime | None = None,
                    log=print, name: str | None = None, start_path: str | None = None,
-                   rivals: list[dict] | None = None) -> Path:
+                   rivals: list[dict] | None = None, hold: int = 1) -> Path:
     """`rivals` (28 October) replaces the config's: dicts with `path` (a genome file, relative to the data root)
     or `kind: coach`, plus optional `weight` (default 1) and `label`. The coach is always a rival: it is the gate."""
     style = make_style(style_name, cfg, twin)
+    hold = 1 if twin else hold  # a twin decides every tick: the hold is the constraint it drops
     now = now or datetime.now(timezone.utc)
     run_id = f"{now.strftime('%Y%m%dT%H%M%SZ')}-spec-{name or style_name}" + ("-twin" if twin else "")
     root = root or data_root()
@@ -532,7 +543,7 @@ def run_specialist(style_name: str, twin: bool, cfg: SpecialistConfig, minutes: 
         start_id = genome_id(start, kernel_sha) if padded or not start_id else start_id
         rival_ids = [rid or genome_id(p, kernel_sha) for rid, p in zip(rival_ids, rival_params)]
         res = train(style, cfg, workers, rival_params, rival_ids, scripted, start, minutes, generations, log,
-                    np.array(rival_weights), coach)
+                    np.array(rival_weights), coach, hold)
         final, arena, names = res["final"], res["arena"], res["names"]
         g_m = arena.play(final[None, :], res["graded"])
         f_m = arena.play(final[None, :], res["fresh"])
@@ -562,7 +573,7 @@ def run_specialist(style_name: str, twin: bool, cfg: SpecialistConfig, minutes: 
         constraint = {"kind": "fitness", "detail": style.fitness}
     result = {
         "style": style_name, "twin": twin, "constraint": constraint, "name": name or style_name, "seed": cfg.seed,
-        "gate": {"coach": cfg.coach_gate}, "lazy_cap": cfg.lazy_cap,
+        "gate": {"coach": cfg.coach_gate}, "lazy_cap": cfg.lazy_cap, "hold": hold,
         "start": {"genome_id": start_id, "run_id": start_run, "cell": start_cell, "reason": why},
         "rivals": [{"id": i, "kind": k, "weight": w, "label": l}
                    for i, k, w, l in zip(rival_ids, rival_kinds, rival_weights, rival_labels)],
@@ -574,7 +585,7 @@ def run_specialist(style_name: str, twin: bool, cfg: SpecialistConfig, minutes: 
                   "descriptors_fresh_mean": verdict["desc"], "constraint_satisfied": verdict["ok"],
                   "wins_all": verdict["wins_all"], "stalled": verdict["stalled"],
                   "points_per_match": verdict["points_per_match"],
-                  "proof": verdict["proof"], "showcase": showcase(f_m, names, rival_ids, res["fresh"])},
+                  "proof": verdict["proof"], "showcase": showcase(f_m, names, rival_ids, res["fresh"], hold=hold)},
         "curve": res["curve"],
     }
     _write_json(out / "result.json", result)
@@ -594,6 +605,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--rival", action="append", default=[],
                     help="PATH[:WEIGHT[:LABEL]], repeatable; replaces the config's rivals (the coach is always added)")
     ap.add_argument("--seed", type=int, help="override the config seed (a twin keeps its specialist's seed)")
+    ap.add_argument("--hold", type=int, default=1, help="the candidate decides every this many ticks (kernel v3); a twin holds 1")
     args = ap.parse_args(argv)
     cfg = load_config(args.config)
     if args.seed is not None:
@@ -606,7 +618,7 @@ def main(argv: list[str] | None = None) -> int:
             rivals.append({"path": parts[0], "weight": float(parts[1]) if len(parts) > 1 and parts[1] else 1.0,
                            "label": parts[2] if len(parts) > 2 else None, "kind": "rival"})
     out = run_specialist(args.style, args.twin, cfg, args.minutes, args.workers, args.generations,
-                         name=args.name, start_path=args.start_genome, rivals=rivals)
+                         name=args.name, start_path=args.start_genome, rivals=rivals, hold=args.hold)
     r = json.loads((out / "result.json").read_text())["final"]
     print(f"{out}: fresh " + ", ".join(f"{k[:8]} {v['won']}/{v['n']} {v['margin']:+.2f}" for k, v in r["fresh"].items())
           + f"; constraint satisfied: {r['constraint_satisfied']}; beats all: {r['wins_all']}; stalled: {r['stalled']}")

@@ -148,7 +148,7 @@ def test_result_json_schema_and_contract(tmp_path, monkeypatch):
         assert set(f[sect]) == {x["id"] for x in r["rivals"]}
         assert all(set(v) == {"won", "n", "margin"} and v["n"] == n for v in f[sect].values())
     assert set(f["descriptors_fresh_mean"]) == set(sp.DESCRIPTOR_NAMES)
-    assert f["showcase"] and set(f["showcase"][0]) == {"seed", "side", "rival_id", "margin", "descriptors"}
+    assert f["showcase"] and set(f["showcase"][0]) == {"seed", "side", "rival_id", "margin", "descriptors", "hold_a", "hold_b"}
     assert set(r["curve"][0]) == {"gen", "t", "fitness_best", "fitness_mean", "margin_by_rival", "constraint_penalty"}
     assert len(r["curve"]) == r["generations"] == 6
     # the final genome is on disk under its content hash, with the rivals and the start
