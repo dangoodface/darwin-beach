@@ -513,10 +513,11 @@ def run_specialist(style_name: str, twin: bool, cfg: SpecialistConfig, minutes: 
     coach = rival_ids.index(SCRIPTED_ID)
     with Workers(cfg.sim_kind, cfg.kernel_path, workers_n, 128) as workers:
         kernel_sha, kernel_version, glen, scripted = workers.simulator_info
-        start = fit_params(start, glen, "the start genome")  # padded when it comes from a narrower kernel
+        padded = len(start) != glen  # a start from a narrower kernel: padded, and its id is new under this kernel
+        start = fit_params(start, glen, "the start genome")
         rival_params = [None if p is None else fit_params(p, glen, "a rival") for p in rival_params]
-        start_id = genome_id(start, kernel_sha)  # under this kernel; `start_run` keeps where it came from
-        rival_ids = [rid if rid == SCRIPTED_ID else genome_id(p, kernel_sha) for rid, p in zip(rival_ids, rival_params)]
+        start_id = genome_id(start, kernel_sha) if padded or not start_id else start_id
+        rival_ids = [rid or genome_id(p, kernel_sha) for rid, p in zip(rival_ids, rival_params)]
         res = train(style, cfg, workers, rival_params, rival_ids, scripted, start, minutes, generations, log,
                     np.array(rival_weights), coach)
         final, arena, names = res["final"], res["arena"], res["names"]
