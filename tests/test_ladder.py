@@ -5,6 +5,7 @@ FakeSimulator; the last runs the real kernel."""
 from __future__ import annotations
 
 import json
+import shutil
 import math
 from datetime import datetime, timezone
 
@@ -357,3 +358,36 @@ def test_run6_config_round_trips_its_pool():
     assert len(c.ladder_pool) == 23 and c.ladder_hold_anchor and c.ladder_weight_scale == 800.0 and len(c.warm_runs) == 2
     again = Config.from_dict({**c.to_dict(), "seed": c.seed})
     assert again.ladder_pool == c.ladder_pool and again.warm_runs == c.warm_runs
+
+
+def test_inbox_newcomers_join_the_ladder_rated_and_the_archive_is_rescored(tmp_path, monkeypatch):
+    """28 October: a genome dropped in runs/<id>/inbox joins the ladder as an exploiter, frozen at its rating
+    against the members, the era advances, the archive is re-scored, and the store and export carry it."""
+    from arena.run import make_run_id
+
+    monkeypatch.setenv("ARENA_DATA", str(tmp_path))
+    so = StoreObserver(tmp_path)
+    first = run(_cfg(ladder_enabled=False, slug="seed-run"), [so, ExportObserver(so, 0.0, tmp_path)], generations=3, now=NOW)
+    out = tmp_path / "out" / first.run_id
+    cells = json.loads((out / "latest.json").read_text())["cells"]
+    assert len(cells) >= 2
+    pool = ({"path": str(out / "genomes" / f"{cells[0]['genome_id']}.bin"), "label": "p", "id": cells[0]["genome_id"]},)
+    run_id = make_run_id("inbox-run", NOW)
+    box = tmp_path / "runs" / run_id / "inbox"
+    box.mkdir(parents=True)
+    shutil.copy(out / "genomes" / f"{cells[1]['genome_id']}.bin", box / "exploiter-1.bin")
+    rec, so2 = Rec(), StoreObserver(tmp_path)
+    ctx = run(_cfg(slug="inbox-run", ladder_pool=pool, ladder_fitness="softmin", ladder_coach_gate=True, inbox_every=2),
+              [so2, ExportObserver(so2, 0.0, tmp_path), rec], generations=4, now=NOW)
+    assert ctx.run_id == run_id
+    joined = [g for g in rec.gens if g.joined]
+    assert len(joined) == 1 and joined[0].generation == 1 and joined[0].rescored  # (gen + 1) % 2 == 0 first at gen 1
+    m, vs = joined[0].joined[0]
+    assert m.kind == "exploiter" and m.label == "exploiter-1" and m.since_era == 1 and len(vs) == 2
+    assert ctx.ladder.era == 1 and ctx.ladder.members[-1] is m and (box / "done" / "exploiter-1.bin").exists()
+    assert not list(box.glob("*.bin"))
+    lad = json.loads((tmp_path / "out" / run_id / "ladder.json").read_text())
+    assert lad["era"] == 1 and [x["kind"] for x in lad["members"]] == ["scripted", "pool", "exploiter"]
+    assert lad["members"][-1]["label"] == "exploiter-1" and lad["members"][-1]["id"] == m.id
+    w = lad["matrix"]["winrate"]
+    assert w[2][0] is not None and w[2][1] is not None  # its blocks against the anchor and the pool member
