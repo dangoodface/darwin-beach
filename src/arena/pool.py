@@ -46,11 +46,21 @@ def fit_params(params: np.ndarray, genome_len: int, what: str = "genome") -> np.
     raise ValueError(f"{what}: {len(params)} values, expected {genome_len}")
 
 
-def load_pool(entries: Sequence[dict], kernel_sha: str, genome_len: int) -> list[Member]:
+def load_pool(entries: Sequence[dict], kernel_sha: str, genome_len: int,
+              bots: dict[str, int] | None = None) -> list[Member]:
     """Each entry is {path, label, id}: the genome file, the name the page shows and
-    the id it had where it came from. Ratings are provisional until Ladder.rate_pool."""
+    the id it had where it came from; or (28 October) {bot, label}: a scripted bot the
+    build exports, by name (`bots` maps names to slots), played from its slot, kind
+    "oracle" for the oracle rungs. Ratings are provisional until Ladder.rate_pool."""
     members = []
     for e in entries:
+        if "bot" in e:
+            name = e["bot"]
+            if not bots or name not in bots:
+                raise ValueError(f"the simulator has no scripted bot {name!r}")
+            kind = "oracle" if name.startswith("oracle") else "scripted"
+            members.append(Member(name, kind, ANCHOR_RATING, 0, None, label=e.get("label", name), slot=bots[name]))
+            continue
         g = make_genome(read_params(resolve(e["path"]), genome_len), kernel_sha, (), "pool", -1)
         members.append(Member(g.id, "pool", ANCHOR_RATING, 0, g, label=e.get("label"), source=e.get("id")))
     ids = [m.id for m in members]

@@ -32,11 +32,16 @@ from .workers import Workers
 VERDICT_STREAM = 6
 
 
-def load_members(out: Path, genome_len: int, kernel_sha: str) -> tuple[list[Member], dict]:
+def load_members(out: Path, genome_len: int, kernel_sha: str, bots: dict[str, int] | None = None) -> tuple[list[Member], dict]:
     lad = json.loads((out / "ladder.json").read_text())
     members = []
     for m in lad["members"]:
         if m["kind"] == "scripted":
+            continue
+        if m["kind"] == "oracle":  # a scripted rung: no genome, played from the build's slot
+            if not bots or m["id"] not in bots:
+                raise ValueError(f"the kernel has no scripted bot {m['id']!r}")
+            members.append(Member(m["id"], "oracle", m["rating"], m["since_era"], None, label=m.get("label"), slot=bots[m["id"]]))
             continue
         g = make_genome(read_params(out / "genomes" / f"{m['id']}.bin", genome_len), kernel_sha, (), m["kind"], -1)
         if g.id != m["id"]:
@@ -81,7 +86,6 @@ def verdict(run_id: str, n_seeds: int = 16, workers_n: int = 15, n_elites: int =
     store.close()
     cfg = json.loads(run["config_json"])
     out = data_root() / "out" / run_id
-    members, lad = load_members(out, run["genome_len"], run["kernel_sha"])
     m = re.match(r"run(\d+)", cfg["slug"])
     elites = load_elites(out, n_elites, run["genome_len"], run["kernel_sha"], f"run {m.group(1)} " if m else "")
     kernel = out / "kernel" / f"{run['kernel_sha']}.wasm"
@@ -92,6 +96,8 @@ def verdict(run_id: str, n_seeds: int = 16, workers_n: int = 15, n_elites: int =
         kernel_sha, _, _, scripted = workers.simulator_info
         if kernel_sha != run["kernel_sha"]:
             raise ValueError(f"kernel {kernel_sha[:8]} is not the run's {run['kernel_sha'][:8]}")
+        bots = getattr(workers, "bots", None) or {SCRIPTED_ID: scripted}
+        members, lad = load_members(out, run["genome_len"], run["kernel_sha"], bots)
         ladder = Ladder(scripted, seeds, pool=members + elites)
         pairs = ladder.rate_pool(workers, cfg["sim"]["max_ticks"])
     rated = ladder.members

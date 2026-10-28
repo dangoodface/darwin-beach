@@ -74,7 +74,7 @@ class Evaluator:
             if m.id in have:
                 continue
             if m.genome is None:
-                extra.append((m.id, self.ladder.scripted_slot))
+                extra.append((m.id, m.slot))
             else:
                 extra.append((m.id, len(self.probes) + len(genomes)))
                 genomes.append(m.genome)

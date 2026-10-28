@@ -100,6 +100,7 @@ class Member:
     winrate_vs_previous: float | None = None
     label: str | None = None  # pool members: the name the page shows
     source: str | None = None  # pool members: the id the genome had where it came from
+    slot: int | None = None  # members without a genome (the coach, an oracle rung): the simulator slot that plays them
 
 
 @dataclass(frozen=True)
@@ -152,7 +153,7 @@ class Ladder:
         self.hold_anchor = hold_anchor
         self.weight_scale = weight_scale
         # the anchor first, always; pool members carry provisional ratings until rate_pool
-        self.members: list[Member] = [Member(SCRIPTED_ID, "scripted", ANCHOR_RATING, 0)] + list(pool)
+        self.members: list[Member] = [Member(SCRIPTED_ID, "scripted", ANCHOR_RATING, 0, slot=scripted_slot)] + list(pool)
         self.pool_pairs: tuple[Pair, ...] = ()
         self.era = 0
         self.matches_total = 0
@@ -181,11 +182,24 @@ class Ladder:
         top = max(m.rating for m in self.members)
         return {m.id: 10.0 ** ((m.rating - top) / self.weight_scale) for m in self.members}
 
-    def play(self, workers: Workers, genome: Genome, opponent: Member, max_ticks: int = 3000) -> Pair:
-        """`genome` against a member over every ladder seed, both sides."""
-        table = [genome.params] + ([opponent.genome.params] if opponent.genome is not None else [])
-        opp = 1 if opponent.genome is not None else self.scripted_slot
-        jobs = [job for s in self.seeds for job in ((s, 0, opp), (s, opp, 0))]
+    def play(self, workers: Workers, a: Genome | Member, b: Member, max_ticks: int = 3000) -> Pair:
+        """`a` (a genome, or a member) against member `b` over every ladder seed, both sides. A member without
+        a genome (the coach, an oracle rung; 28 October) plays from its slot."""
+        table: list[np.ndarray] = []
+
+        def slot_of(x: Genome | Member) -> int:
+            g = x if isinstance(x, Genome) else x.genome
+            if g is not None:
+                table.append(g.params)
+                return len(table) - 1
+            if x.slot is None:
+                raise ValueError(f"{x.id} has neither a genome nor a slot")
+            return x.slot
+
+        sa, sb = slot_of(a), slot_of(b)
+        if not table:  # two scripted bots: the table still needs a row
+            table.append(np.zeros(workers.simulator_info.genome_len, dtype=np.float32))
+        jobs = [job for s in self.seeds for job in ((s, sa, sb), (s, sb, sa))]
         results = workers.play(np.stack(table).astype(np.float32), jobs, max_ticks)
         self.matches_total += len(jobs)
         wins = draws = losses = 0
@@ -199,19 +213,19 @@ class Ladder:
                 draws += 1
             else:
                 losses += 1
-        return Pair(genome.id, opponent.id, len(jobs), wins, draws, losses, margin / len(jobs))
+        return Pair(a.id, b.id, len(jobs), wins, draws, losses, margin / len(jobs))
 
     def rate_pool(self, workers: Workers, max_ticks: int = 3000) -> tuple[Pair, ...]:
         """Every pool member against every other member and the anchor, on the ladder
         seeds; the ratings are the joint fit with the anchor at 1000. Returns the blocks."""
         pairs: list[Pair] = []
         for k, a in enumerate(self.members):
-            if a.genome is None:
-                continue
+            if k == 0:
+                continue  # the anchor plays as everyone's opponent
             for b in self.members[:k]:
-                pairs.append(self.play(workers, a.genome, b, max_ticks))
+                pairs.append(self.play(workers, a, b, max_ticks))
         rating = joint_elo([m.id for m in self.members], pairs, self.anchor.id)
-        self.members = [m if m.genome is None else replace(m, rating=rating[m.id]) for m in self.members]
+        self.members = [m if k == 0 else replace(m, rating=rating[m.id]) for k, m in enumerate(self.members)]
         self.pool_pairs = tuple(pairs)
         return self.pool_pairs
 

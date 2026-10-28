@@ -140,7 +140,7 @@ class Config:
             raise ValueError("ladder.weight_scale must be 0 (equal weights) or positive")
         if self.ladder_pool and not self.ladder_enabled:
             raise ValueError("ladder.pool needs ladder.enabled")
-        if any("path" not in p for p in self.ladder_pool):
+        if any("path" not in p and "bot" not in p for p in self.ladder_pool):
             raise ValueError("every ladder.pool entry needs a path")
 
     def to_dict(self) -> dict[str, Any]:

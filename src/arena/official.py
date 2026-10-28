@@ -73,13 +73,30 @@ def params_len(path: Path) -> int:
     return path.stat().st_size // 4
 
 
+def add_bot(name: str, label: str, rating: float, since: str = "") -> dict:
+    """A scripted bot the build exports (an oracle rung) as a member at a measured rating, by name."""
+    doc = load_ladder()
+    if any(m["id"] == name for m in doc["members"]):
+        raise ValueError(f"{name} is already a member")
+    doc["members"].append({"id": name, "label": label, "kind": "oracle" if name.startswith("oracle") else "scripted",
+                           "rating": float(rating), "since": since})
+    _write_json(ladder_path(), doc)
+    return doc
+
+
 def rate(cands: list[tuple[Path, str]], workers_n: int = 15, kernel_path: str | None = None) -> list[dict]:
     doc = load_ladder()
     seeds = tuple(int(s) for s in doc["seeds"])
     with Workers("kernel", kernel_path or doc["kernel_path"], workers_n, 128) as workers:
         sha, _, glen, scripted = workers.simulator_info
+        bots = getattr(workers, "bots", None) or {SCRIPTED_ID: scripted}
         members = []
         for m in doc["members"]:
+            if "path" not in m:  # a scripted member, played from the build's slot
+                if m["id"] not in bots:
+                    raise ValueError(f"the kernel has no scripted bot {m['id']!r}")
+                members.append(Member(m["id"], m["kind"], float(m["rating"]), 0, None, label=m["label"], slot=bots[m["id"]]))
+                continue
             g = make_genome(read_params(Path(m["path"]), glen), sha, (), m["kind"], -1)
             members.append(Member(g.id, m["kind"], float(m["rating"]), 0, g, label=m["label"]))
         ladder = Ladder(scripted, seeds, pool=members)
@@ -122,6 +139,9 @@ def main() -> None:
     r.add_argument("--workers", type=int, default=15); r.add_argument("--kernel")
     a = sub.add_parser("add"); a.add_argument("genome"); a.add_argument("--label", required=True)
     a.add_argument("--rating", type=float, required=True); a.add_argument("--since", default="")
+    b = sub.add_parser("add-bot"); b.add_argument("name", help="a scripted bot's name, e.g. oracle-v1-rung2")
+    b.add_argument("--label", required=True); b.add_argument("--rating", type=float, required=True)
+    b.add_argument("--since", default="")
     args = ap.parse_args()
     if args.cmd == "init":
         doc = init_from_run(args.from_run)
@@ -130,6 +150,9 @@ def main() -> None:
         cands = [(Path(s.split(":")[0]), s.split(":")[1] if ":" in s else Path(s).stem[:8]) for s in args.genomes]
         for res in rate(cands, args.workers, args.kernel):
             print(describe(res))
+    elif args.cmd == "add-bot":
+        doc = add_bot(args.name, args.label, args.rating, since=args.since)
+        print(f"added {args.label} ({args.name}) at {args.rating:.0f}; {len(doc['members'])} members")
     else:
         doc = add_member(Path(args.genome), args.label, args.rating, since=args.since)
         print(f"added {args.label} at {args.rating:.0f}; {len(doc['members'])} members")

@@ -24,6 +24,7 @@ from .genome import Genome, make_genome, random_params
 from .ladder import Challenge, Ladder
 from .optim import CmaMe, EvalResult, MapElites
 from .pool import load_pool, load_warm, read_params
+from .sim import SCRIPTED_ID
 from .workers import Workers, make_simulator
 
 # Spawn order of the root SeedSequence. Appending is safe; reordering changes every run.
@@ -153,7 +154,8 @@ def run(
             ladder_seeds = cfg.ladder_seed_list or tuple(
                 int(s) for s in ladder_ss.generate_state(cfg.ladder_seeds, dtype=np.uint64)
             )
-            pool = load_pool(cfg.ladder_pool, kernel_sha, genome_len)
+            bots = getattr(workers, "bots", None) or {SCRIPTED_ID: sim_scripted}  # name -> slot of every scripted bot
+            pool = load_pool(cfg.ladder_pool, kernel_sha, genome_len, bots)
             ladder = Ladder(sim_scripted, ladder_seeds, cfg.ladder_threshold, cfg.ladder_cycle_window,
                             pool, cfg.ladder_hold_anchor, cfg.ladder_weight_scale)
             if pool:  # the round robin: 100 blocks of ladder seeds for a pool of 23, a few seconds

@@ -224,7 +224,7 @@ def export_run(
     # genomes the page can fetch: live elites, replay opponents (probes), the champion's ancestry, the ladder
     lineage = ancestors(champion, by_id)
     want = (set(live) | set(lineage) | {p for p in json.loads(run["probe_ids_json"]) if p != SCRIPTED_ID}
-            | {m["member_id"] for m in members if m["kind"] != "scripted"})  # the scripted bot has no genome
+            | {m["member_id"] for m in members if m["kind"] not in ("scripted", "oracle")})  # scripted bots have no genome
     glen = run["genome_len"]
     for gid in sorted(want):
         data = store.params(gid)
