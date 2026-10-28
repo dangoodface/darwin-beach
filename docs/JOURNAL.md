@@ -537,3 +537,112 @@ Data: `out/20261028T001309Z-run6-definitive/` (latest.json, ladder.json,
 curve.json, genomes) and `definitive.json` beside them (leaderboard, the
 twin's record, the full matrix). The campaign page: "Honest scores" goes up
 one, three log lines.
+
+## Night, 28 Oct, 04:00: round 7, the go, and the oracle
+
+Daniel, at 01:51, through funsies: "Okay set up crons with fable every 60 min
+for 6 hours. Same protocol of yesterday you and fable coordinate if tied opus
+does the break. Explore whatever you want, be creative, do not limit to
+current scope. Be you :) good night." The plan he approved: track A, more
+specialists (four assassins, four gap styles, One-Touch, Lazy, Smooth
+Operator with a 9-tick hold, and his La Clavada), each with a twin where it
+teaches something; track B, the league on a bigger brain, target 2500.
+funsies syncs hourly from 02:53; Opus breaks ties.
+
+**The twin patch test (02:03, 20 minutes).** funsies' idea: evolve from the
+twin with the lob artist weighted three to one and see whether it keeps its
+other wins. It did more than that. The result beats the lob artist 11 of 16
+on fresh serves, the all-rounder 15 of 16, the sprinter 15 of 16, the coach
+16 of 16, and on the official board it rates 2183, measurable, beating all
+24 members. The twin's weakness was patchable in twenty minutes. It is the
+board's first member above 2000.
+
+**The official board** (`python -m arena.official`). A frozen ladder: the 23
+members of run 6 at their ratings, then every promotion-grade bot at its
+measured rating; 64 official serves no trainer ever draws, both sides, 6,000
+ticks; a candidate's rating is the Elo that best explains its record against
+the frozen members, the coach at 1000; it counts only while the candidate
+scores under 90 per cent against at least three members, else it is "above
+the ladder". The twin itself checks out at 1879 against the run 6 scale's
+1876.
+
+**The tick cap.** The first 6,000-tick rating came back as all ties: the
+kernel refused anything over 3,000 ticks (`MAX_TICKS_CAP`). Worth knowing for
+the record: at 3,000 ticks the twin against the lob artist ends 1-1 or 0-0
+at the limit on most seeds. The top bots do not miss; a third of their
+matches are stalemates. Kernel v3 raised the cap to 12,000.
+
+**Kernel v3 (Opus, 02:30).** One version bump: a per-side action hold (the
+brain decides every `hold` ticks and repeats in between; Smooth Operator's
+constraint), a 64-wide hidden layer (515 to 1,027 parameters) with the old
+units in the first 32 slots and the sums in the same order, so a run 6
+genome padded with zeros plays a bit-identical match (1,000 of 1,000, every
+descriptor), SIMD pairs of units at 1.11 times v2's cost on the training
+mix (plain 64 cost 1.57, width 96 was 2.22 and is out), the cap, and an
+eleventh descriptor, spiked_points, for La Clavada. Replay records carry
+the holds; `tools/verify_specialist.py` replays a specialist's fresh record
+from its own files.
+
+**The assassins (02:22 to 03:42).** One bot each, trained twenty minutes
+against a single target weighted three to one, with the coach as the gate.
+Twin assassin: beats the twin 128 to 0 on the official serves and the coach
+128 to 0, rates 1759 (1837 once the oracle rungs joined the board), and
+loses to the all-rounder it started from, both sprinters, the lob artist
+and joga bonito: narrow by design, a sparring partner. Lob artist assassin
+1699. Sprinter assassin 1874. The all-rounder's assassin went 6 of 16
+against its target: the all-rounder survived its killer, which says more
+about the all-rounder than about the method.
+
+**The recipe fix (02:00).** Rivals are the pool's top four plus the coach
+as a hard gate (a candidate that loses to the coach scores that margin minus
+ten, so it ranks below every candidate that holds), rivals and start genomes
+can be files with weights, a win and stall verdict, and the styles spiker,
+dinker (the two quadrants of hit height against speed that the long ball and
+the lob artist did not cover; the driver and floater of the plan were those
+two under other names), one_touch, lazy (a soft cap on travel per tick at
+half the start's, the gate as the stall guard), assassin, clavada and
+smooth_operator.
+
+**The league code (02:30 to 03:30).** Fitness "softmin": a smooth minimum
+of the mean margins against the eight highest-rated members, so the worst
+matchup is what improves, with the coach gate; ladder matches at 6,000
+ticks; newcomers from `runs/<id>/inbox`: genomes trained beside the run
+join the ladder rated on the ladder seeds and the archive is re-scored
+(exploiters, every 45 minutes, trained ten minutes against the current best
+cell); padding of v2 genomes through the kernel's helper on load.
+
+**The oracle (Opus, 03:10, plan B4).** Asked for an exploration, Opus built
+a scripted bot that plans with the game's own arithmetic: for each incoming
+ball it plays out about a thousand ways of meeting it, scores each return by
+the opponent's chances to reach it, replans every 8 ticks, and waits where
+the opponent's options hurt least. Handicap rungs add a perception delay or
+aim noise. On the official board: rung 0 (no delay) 2220, beating all 25
+members, the twin patched 127 to 1; delay 1, 2133; delay 2, 2021; delay 4,
+1901; delay 8, 1747; delay 16, 1444; aim noise half a step at a 2-tick
+delay, 1153; a full step, 868. Delay is a smooth handicap, about 100 Elo a
+tick at first; noise is a cliff. Rung 0 beats everything head to head yet
+rates only 37 above the twin patched, held down by the net blockers (lob
+artist twin 0.63): the board's one number is non-transitive at the top. An
+oracle side costs about thirty times a genome match and keeps state through
+a match, so it cannot be replayed tick by tick. Decisions: rungs 0, 2 and 4
+are board members at those ratings (27 members, fixed marks from 868 to
+2220 for the first time); rungs 2 and 4 are promotion-only members of the
+league's ladder (rated, faced in promotion checks, never played by the
+candidates); rung 0 stays off the league, because a champion that must beat
+the no-delay oracle head to head would never be promoted tonight. The next
+oracle step, for another day: a second ply for the jumping blocker. Opus
+stood down after that to spare the shared budget.
+
+**The rehearsal (03:52).** The league config on the oracle build, 150
+seconds on four loaded workers: 31 members rated in the opening round robin
+(rungs 2 and 4 at 2052 and 1893, the twin patched on top at 2140), the
+candidates playing 256 matches each without the rungs, no genome file
+written for a rung, the store and the export carrying both kinds. The
+league starts when the two specialist queues end, about 08:10, twelve
+hours, from the main checkout.
+
+Timeline: queue A (assassins, then spiker, dinker, One-Touch, Lazy with
+twins) until about 06:45; queue 7b on v3 (Smooth Operator at hold 9, La
+Clavada, with twins) until about 08:10; the league after. The all-rounder
+and the lob artist still beat the twin; the twin patched does not lose to
+anyone on the board but rung 0.
