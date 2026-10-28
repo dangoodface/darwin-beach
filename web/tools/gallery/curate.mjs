@@ -1,10 +1,10 @@
 // Picks the replay gallery's matches by playing them on the real kernel, and writes
 // gallery.json: every match as seed + two brains, with the hash and score it must land on.
 // Usage: node tools/gallery/curate.mjs [--out file]
-import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { join, basename } from "node:path";
 import { homedir } from "node:os";
-import { Kernel, SCRIPTED_SLOT } from "../../src/kernel.ts";
+import { Kernel, SCRIPTED_SLOT, padGenome } from "../../src/kernel.ts";
 
 const OUT = join(process.env.ARENA_DATA ?? join(homedir(), ".local/share/arena"), "out");
 const RUN = {
@@ -19,8 +19,8 @@ const COACH = "scripted-v1";
 const latest = Object.fromEntries(Object.entries(RUN).map(([k, d]) => [k, JSON.parse(readFileSync(join(OUT, d, "latest.json"), "utf8"))]));
 const ARENA = process.env.ARENA_DATA ?? join(homedir(), ".local/share/arena");
 const SPEC = join(ARENA, "specialists");
-// Specialists run kernel version 2 (juggle counters; every older replay lands on the same hash),
-// so the gallery uses the newest kernel any specialist carries, else run 4's.
+// Each kernel version replays every older match on the same hash (version 3 pads older genomes
+// with zeros), so the gallery uses the newest kernel any specialist carries, else run 4's.
 const specRuns = existsSync(SPEC) ? readdirSync(SPEC).filter((d) => existsSync(join(SPEC, d, "result.json"))).sort() : [];
 const result = (d) => JSON.parse(readFileSync(join(SPEC, d, "result.json"), "utf8"));
 const v2 = specRuns.map((d) => ({ d, r: result(d) })).filter(({ r }) => r.kernel_version >= 2).at(-1);
@@ -33,7 +33,9 @@ const scan = await Kernel.load(wasm);
 function scanSlot(i, run, id) {
   if (id === COACH) return SCRIPTED_SLOT;
   const b = readFileSync(join(OUT, RUN[run], "genomes", `${id}.bin`));
-  new Uint8Array(scan.k.memory.buffer).set(b, scan.k.genome_table_ptr() + i * 515 * 4);
+  let f = new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength));
+  if (f.length !== scan.genomeLen) f = padGenome(f);
+  new Float32Array(scan.k.memory.buffer, scan.k.genome_table_ptr() + i * scan.genomeLen * 4, scan.genomeLen).set(f);
   return i;
 }
 
@@ -46,8 +48,8 @@ function slot(run, id) {
 }
 
 // One whole match, with the longest rally (ticks from serve to point) and when it started.
-function play(seed, left, right, k = kernel) {
-  k.reset(seed);
+function play(seed, left, right, k = kernel, holds = [1, 1]) {
+  k.reset(seed, ...holds);
   const pts = [0, 0];
   let rallyStart = 0, best = { rally: -1, start: 0 };
   while (!k.done(3000)) {
@@ -76,7 +78,7 @@ const FRESH = Array.from({ length: 100 }, freshSeed);
 
 const matches = [];
 function add(m, run, leftId, rightId, seed, extra = {}) {
-  const r = play(seed, slot(run.l ?? run, leftId), slot(run.r ?? run, rightId));
+  const r = play(seed, slot(run.l ?? run, leftId), slot(run.r ?? run, rightId), kernel, m.holds ?? [1, 1]);
   matches.push({ ...m, left: { ...m.left, id: leftId }, right: { ...m.right, id: rightId }, seed: seed.toString(), ticks: r.ticks, hash: r.hash, points: r.points, ...extra(r) });
   console.log(m.title, r.points, r.ticks, r.hash);
   return r;
@@ -266,6 +268,59 @@ act5("The king", king, champ10, () => `Rank 1 of ${lb.length} by Elo, ${Math.rou
 act5("The king has a weakness", lob, king, () => `The Lob Artist, rank 2, takes ${pc(wr(lob, king))} against the king${TIE}. Their matches are long: this one runs to the time limit. It beats ${beats(lob)} of the other ${lb.length - 1}, more than anyone, so by robustness it is the better player.`, true);
 act5("Rock, paper, scissors", elite6, king, () => `Run 6's sixth-best brain ranks ${elite6.rank}th of ${lb.length}, yet it takes ${pc(wr(elite6, king))} against the king${TIE}. At the top nobody beats everyone: just cycles.`, true);
 act5("The exploit", exploit, coachE, (g) => `Run 6's highest scorer ranks ${exploit.rank}th: it beats the specialists more often than not, and against the coach it takes ${pc(wr(exploit, coachE))}${TIE}. The fitness weighted each rival by its rating, which made the coach worth a twelfth of the king, so evolution learned to ignore it. The promotion gate caught it.`, false);
+
+// ---------- act 6: the night shift ----------
+// Round 7: twenty-minute runs from the night's best brains, each rated on the official board
+// (64 serves per pair, both sides, up to 6,000 ticks, the coach fixed at 1000).
+const OFF = join(ARENA, "official");
+const ladder = JSON.parse(readFileSync(join(OFF, "ladder.json"), "utf8"));
+const offRatings = {};
+for (const f of readdirSync(join(OFF, "ratings")).filter((f) => f.endsWith(".json")).map((f) => join(OFF, "ratings", f)).sort((a, b) => statSync(a).mtimeMs - statSync(b).mtimeMs)) {
+  const r = JSON.parse(readFileSync(f, "utf8"));
+  if (!/check/.test(r.label)) offRatings[basename(r.path)] = r;
+}
+// Members carry padded ids; the genome file names the brain whichever kernel rated it.
+const memberFiles = new Set(ladder.members.filter((m) => m.path).map((m) => basename(m.path)));
+const tonight = (path) => /specialists\/20261028|oracle/.test(path ?? "");
+const board6 = [
+  ...ladder.members.map((m) => ({ label: m.label, rating: m.rating, kind: m.kind === "oracle" ? "coach" : tonight(m.path) ? "new" : "" })),
+  { label: "the coach", rating: ladder.anchor_rating, kind: "coach" },
+  ...Object.entries(offRatings).filter(([file]) => !memberFiles.has(file)).map(([, r]) => r).map((r) => ({ label: r.label.replace(/ \(.*\)$/, "").replaceAll("-", " "), rating: r.rating, kind: "new" })),
+].sort((a, b) => b.rating - a.rating).map((e, i) => ({ rank: i + 1, label: e.label, rating: Math.round(e.rating), kind: e.kind }));
+const specDir = (suffix) => specRuns.filter((d) => d.endsWith(`-spec-${suffix}`) && result(d).elapsed_s >= 600).at(-1);
+const official = (id) => offRatings[`${id}.bin`];
+// Records are keyed by the opponent's id on the rating kernel, so match on its label.
+const offRec = (id, oppLabel) => Object.values(official(id)?.record ?? {}).find((x) => x.label === oppLabel);
+const ofN = (rec) => `${rec.won} of ${rec.n}`;
+function act6(title, suffix, label, pick, caption) {
+  const d = specDir(suffix);
+  if (!d) return;
+  const r = result(d), me = r.final.genome_id;
+  const show = pick(r.final.showcase, r);
+  if (!show) return;
+  const riv = r.rivals.find((x) => x.id === show.rival_id);
+  const them = show.rival_id === COACH ? coachSide : { label: (riv?.label ?? "rival").toUpperCase(), kind: "bot" };
+  const meSide = { label, kind: "bot" }, a = show.side !== "B", run = `spec:${d}`;
+  const o = official(me);
+  const f = r.final.fresh, fr = (id) => `${f[id]?.won ?? "?"} of ${f[id]?.n ?? 16}`;
+  const text = caption({ me, r, f, fr, o, rating: o ? Math.round(o.rating) : null, md: r.final.descriptors_fresh_mean ?? {}, p: r.final.proof ?? {} });
+  add({ act: 6, title, left: a ? meSide : them, right: a ? them : meSide, caption: text, ...(show.hold_a > 1 || show.hold_b > 1 ? { holds: [show.hold_a, show.hold_b] } : {}) },
+    run, a ? me : show.rival_id, a ? show.rival_id : me, BigInt(show.seed), () => (title === "The patch" ? { board: board6 } : {}));
+}
+const vs = (id, win = true) => (sc) => sc.find((m) => m.rival_id === id && (m.margin > 0) === win);
+const vsLabel = (label, win = true) => (sc, r) => vs(r.rivals.find((x) => x.label === label)?.id, win)(sc);
+const TWIN = "7a3792a851786796442394625cf8c0881d205df84e4a2af4f5726859869cc720";
+const LOB = "18c8b5a5262fbdfcc87245f9a980de48d623d5f5990039df380ca6899f9d1773";
+const ALL = "c7fd99648c6c14bd3c93fc4f20b87df9f2c60c3f076e8fed8594e12a3b83ddd7";
+const OFFICIAL = "official Elo (64 serves against every bot on the ladder, both sides, the coach fixed at 1000)";
+act6("The patch", "twin-patch", "TWIN PATCHED", vs(LOB), ({ fr, rating, o }) => `Act 5's king had one weakness, the Lob Artist. So it went back to school for twenty minutes, with the Lob Artist counting three times. On new serves it now beats the Lob Artist ${fr(LOB)}, the All-Rounder ${fr(ALL)} and the coach ${fr(COACH)}. Its ${OFFICIAL} is ${rating}, and it beats ${o.beaten ?? 24} of ${o.of ?? 24} members. The only thing above it is the oracle, a hand-written bot that plans with the game's own physics. The board below is the new official ladder: green is tonight's.`);
+act6("The assassin", "twin-assassin", "TWIN ASSASSIN", vs(TWIN), ({ me, rating }) => { const rec = offRec(me, "flat earther twin"); return `Trained against one bot only: the old king. On the official serves it beats it ${rec ? ofN(rec) : "every time"}. Against everyone else it is ordinary, an official ${rating}. A killer built for one target, as asked.`; });
+act6("The survivor", "all-rounder-assassin", "ASSASSIN", (sc) => vs(ALL, false)(sc) ?? sc.filter((m) => m.rival_id === ALL).sort((a, b) => a.margin - b.margin)[0], ({ fr }) => `The same recipe, aimed at the All-Rounder. Twenty minutes later its killer wins only ${fr(ALL)} on new serves. The assassin is fine; the All-Rounder is just that solid. Here is one of the few it won.`);
+act6("The Spiker", "spiker", "SPIKER", vs(TWIN), ({ fr, rating, md }) => `A rule it cannot break: hit hard and from high, or be thrown out. Its shots leave at speed ${md.mean_speed_after_hit.toFixed(1)} from height ${md.mean_hit_height.toFixed(1)}. It beats the old king ${fr(TWIN)} on new serves and the coach ${fr(COACH)}. Official ${rating}: tonight's best style.`);
+act6("Too soft", "dinker", "DINKER", vs(COACH, false), ({ r, fr, rating, md }) => `The opposite rule: soft and low, every touch. It obeyed, at speed ${md.mean_speed_after_hit.toFixed(1)}, and it went ${r.generations.toLocaleString("en-US")} generations without getting good. A slow, low ball is a free smash for anyone who jumps. Against the coach: ${fr(COACH)}. Official ${rating}, last on the board. A finding, not a bug.`);
+act6("Lazy wins", "lazy", "LAZY", vs(TWIN), ({ fr, rating, p }) => `Allowed to travel only ${p.travel_cap.toFixed(2)} a tick, the Flat-Earther's pace, and it used ${p.travel_per_tick.toFixed(2)}. It beats the old king ${fr(TWIN)} on new serves anyway. Official ${rating}: moving less is not playing worse.`);
+act6("Human reflexes", "smooth_operator", "SMOOTH OP", (sc) => sc.find((m) => m.margin > 0) ?? sc[0], ({ r, f }) => { const won = Object.values(f).reduce((a, x) => a + x.won, 0), n = Object.values(f).reduce((a, x) => a + x.n, 0); return `It may change its mind only every ${r.hold} ticks, ${(r.hold / 30).toFixed(1)} seconds, about a person's reaction time; in between it repeats its last move. After twenty minutes it wins ${won} of ${n} on new serves${won && won === f[COACH]?.won ? ", every one of them against the coach" : ""}. Every other bot here decides 30 times a second. This is one of its rare wins.`; });
+act6("La Clavada", "clavada", "LA CLAVADA", (sc) => sc.find((m) => m.margin > 0) ?? sc[0], ({ r, fr, md, rating }) => `Paid to spike: at least a third of its points must come from a juggle that ends in a hard hit at the net. On new serves it spikes ${md.points ? Math.round((100 * md.spiked_points) / md.points) : 0} per cent of its points.${rating ? ` Official ${rating}.` : ""} Against ${r.rivals[0].label ?? "its first rival"}, on new serves: ${fr(r.rivals[0].id)}.`);
 
 // ---------- the arcade: rated rivals for the viewer ----------
 const ARCADE = [

@@ -5,9 +5,10 @@ import { drawCourt, type CourtColours } from "./court.ts";
 
 type Side = { id: string; label: string; kind: "bot" | "coach" };
 type Match = {
-  act: 1 | 2 | 3 | 4 | 5; title: string; caption: string; left: Side; right: Side;
+  act: 1 | 2 | 3 | 4 | 5 | 6; title: string; caption: string; left: Side; right: Side;
   seed: string; ticks: number; hash: string; points: [number, number]; from?: number;
-  board?: { rank: number; label: string; rating: number }[];
+  holds?: [number, number];
+  board?: { rank: number; label: string; rating: number; kind?: string }[];
 };
 // The arcade: the viewer plays a rated bot, and every result moves the viewer's own Elo.
 type Rival = { id: string; label: string; kind: "bot" | "coach"; rating: number; note: string };
@@ -15,7 +16,7 @@ type Gallery = { kernel: string; matches: Match[]; brains: Record<string, string
 
 const TICK_MS = 1000 / 30;
 const MAX_TICKS = 3000;
-const ACTS = { 1: "LEARNING", 2: "FUNSIES", 3: "THE BEST", 4: "THE SPECIALISTS", 5: "THE DEFINITIVE PLAYER?" } as const;
+const ACTS = { 1: "LEARNING", 2: "FUNSIES", 3: "THE BEST", 4: "THE SPECIALISTS", 5: "THE DEFINITIVE PLAYER?", 6: "THE NIGHT SHIFT" } as const;
 
 const $ = (id: string) => document.getElementById(id)!;
 const bytes = (b64: string) => Uint8Array.from(atob(b64.trim()), (c) => c.charCodeAt(0));
@@ -68,7 +69,7 @@ function load(i: number) {
   const m = data.matches[i];
   left = slot(m.left);
   right = slot(m.right);
-  k.reset(BigInt(m.seed));
+  k.reset(BigInt(m.seed), ...(m.holds ?? [1, 1]));
   pts = [0, 0];
   // A long match can start just before its moment; the skipped ticks still run, so the hash still checks.
   for (let t = 0; t < (m.from ?? 0) && !k.done(MAX_TICKS); t++) tick();
@@ -80,7 +81,7 @@ function load(i: number) {
   b.hidden = !m.board;
   b.replaceChildren(...(m.board ?? []).map((e) => {
     const li = document.createElement("li");
-    li.dataset.kind = e.label === "the coach" ? "coach" : e.label.startsWith("run 6") ? "new" : "";
+    li.dataset.kind = e.kind ?? (e.label === "the coach" ? "coach" : e.label.startsWith("run 6") ? "new" : "");
     li.append(Object.assign(document.createElement("span"), { textContent: String(e.rank) }),
       Object.assign(document.createElement("span"), { textContent: e.label }),
       Object.assign(document.createElement("span"), { textContent: String(e.rating) }));
