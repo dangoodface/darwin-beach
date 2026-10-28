@@ -5,7 +5,7 @@ import json
 import numpy as np
 import pytest
 
-from arena.definitive import load_elites
+from arena.definitive import beats, load_elites
 from arena.genome import make_genome
 
 KERNEL = "ab" * 32
@@ -29,6 +29,11 @@ def test_load_elites_ranks_by_rating_then_fitness_and_labels(tmp_path):
     assert [e.label for e in elites] == ["run 6 elite #1 (gen 30)", "run 6 elite #2 (gen 20)", "run 6 elite #3 (gen 10)"]
     assert all(e.kind == "elite" for e in elites) and elites[0].rating == 1700.0
     assert load_elites(tmp_path, 0, 8, KERNEL) == []
+
+
+def test_beats_counts_more_wins_than_losses_with_ties_aside():
+    rec = {"a": {"won": 31, "lost": 0, "tied": 33}, "b": {"won": 20, "lost": 20, "tied": 24}, "c": {"won": 2, "lost": 60, "tied": 2}}
+    assert beats(rec) == 1
 
 
 def test_load_elites_refuses_a_genome_that_does_not_hash_to_its_id(tmp_path):

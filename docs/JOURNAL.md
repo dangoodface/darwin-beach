@@ -511,7 +511,8 @@ run 4's champion below the coach, run 5 champion #1 last at 482. The scale
 is compressed (1876 became 1566: other serves, a bigger field), the order
 holds.
 
-**Cycles, again.** The twin beats 21 of 29. It loses to the all-rounder (2
+**Cycles, again.** The twin beats 26 of 29 (more wins than losses; a tie
+counts half, the ladder's own definition). It loses to the all-rounder (2
 of 64) and the lob artist (3 of 64), and run 6's elite #6, ranked 17th,
 beats it 43 of 64. The lob artist beats 27 of 29, more than anyone, and has
 the best worst matchup (49 per cent, against its own twin). Run 6's elite #1

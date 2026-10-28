@@ -220,14 +220,16 @@ there so a run that promoted nobody still gets a verdict.
 ```json
 {"run_id": "…", "seeds": ["…"], "matches_per_pair": 32, "elites": 6, "champion": "…",
  "members_beaten": 23, "of": 29,
- "fresh": {"<member id>": {"label": "…", "kind": "pool", "won": 30, "n": 32, "margin": 4.1}},
+ "fresh": {"<member id>": {"label": "…", "kind": "pool", "won": 30, "lost": 1, "tied": 1, "n": 32, "margin": 4.1}},
  "top": {"id": "…", "label": "…", "kind": "elite", "rating": 1900.0, "beaten": 27, "of": 29, "record": {"<id>": {}}},
  "leaderboard": [{"rank": 1, "id": "…", "label": "…", "kind": "champion", "rating": 1900.0, "run_rating": 1880.0}],
  "matrix": {"ids": ["…"], "winrate": [[null, 0.9], [0.1, null]]}}
 ```
 
 `fresh` is the run champion's record against each other entrant and `top`
-the held-out leader's (`record` has the same shape as `fresh`); `run_rating`
+the held-out leader's (`record` has the same shape as `fresh`). "Beaten"
+counts entrants with more wins than losses, the ladder's own definition of
+a win (a tie counts half), so it agrees with `matrix` at 0.5; `run_rating`
 is the rating the entrant held in the run (ladder rating, or archive rating
 for an elite), for comparison.
 

@@ -61,6 +61,11 @@ def load_elites(out: Path, n: int, genome_len: int, kernel_sha: str, prefix: str
     return members
 
 
+def beats(record: dict) -> int:
+    """How many entrants `record`'s owner beat: more wins than losses, the ladder's own definition (a tie counts half)."""
+    return sum(1 for f in record.values() if f["won"] > f["lost"])
+
+
 def matrix(ids: list[str], pairs: tuple[Pair, ...]) -> list[list[float | None]]:
     index = {mid: k for k, mid in enumerate(ids)}
     win: list[list[float | None]] = [[None] * len(ids) for _ in ids]
@@ -102,9 +107,10 @@ def verdict(run_id: str, n_seeds: int = 16, workers_n: int = 15, n_elites: int =
             if who not in (p.a, p.b):
                 continue
             other = p.b if p.a == who else p.a
-            won = p.wins_a if p.a == who else p.wins_b
+            won, lost = (p.wins_a, p.wins_b) if p.a == who else (p.wins_b, p.wins_a)
             margin = p.margin_a if p.a == who else -p.margin_a
-            rec[other] = {"label": label[other], "kind": kind[other], "won": won, "n": p.n, "margin": margin}
+            rec[other] = {"label": label[other], "kind": kind[other], "won": won, "lost": lost, "tied": p.draws,
+                          "n": p.n, "margin": margin}
         return rec
 
     fresh = record(champion)
@@ -113,10 +119,10 @@ def verdict(run_id: str, n_seeds: int = 16, workers_n: int = 15, n_elites: int =
     result = {
         "run_id": run_id, "kernel_sha": run["kernel_sha"], "seeds": [str(s) for s in seeds],
         "matches_per_pair": 2 * len(seeds), "elites": len(elites), "champion": champion,
-        "members_beaten": sum(1 for f in fresh.values() if f["won"] > f["n"] / 2), "of": len(fresh),
+        "members_beaten": beats(fresh), "of": len(fresh),
         "fresh": fresh,
         "top": {"id": board[0].id, "label": label[board[0].id], "kind": kind[board[0].id], "rating": board[0].rating,
-                "beaten": sum(1 for f in top.values() if f["won"] > f["n"] / 2), "of": len(top), "record": top},
+                "beaten": beats(top), "of": len(top), "record": top},
         "leaderboard": [{"rank": k + 1, "id": m.id, "label": label[m.id], "kind": m.kind, "rating": m.rating,
                          "run_rating": run_rating.get(m.id)} for k, m in enumerate(board)],
         "matrix": {"ids": [m.id for m in rated], "winrate": matrix([m.id for m in rated], pairs)},
