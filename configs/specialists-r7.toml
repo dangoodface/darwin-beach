@@ -1,0 +1,88 @@
+# Specialist trainer, round 7 (28 October 2026). Rivals are the pool's top four plus the coach, which is the gate
+# (a candidate that loses to the coach scores below every one that does not); window styles start from run 6's lit
+# cells. Run: python -m arena.specialist --style spiker --config configs/specialists-r7.toml
+seed = 20261028
+
+[sim]
+kind = "kernel"
+kernel_path = "artifacts/kernel/93c29e323d3d1d7874286754ae395de50a8e3932b20cd75aa77787ce4387ebfb.wasm"   # kernel version 2
+max_ticks = 3000
+
+[start]
+run = "20261028T001309Z-run6-definitive"
+fallback_run = "20261027T130856Z-night-r5-ladder"
+
+# The rivals: genome files under $ARENA_DATA, and the scripted bot. `weight` (default 1) weights the mean margin.
+[[rival]]
+path = "specialists/20261027T182712Z-spec-flat_earther-twin/genomes/7a3792a851786796442394625cf8c0881d205df84e4a2af4f5726859869cc720.bin"
+label = "flat earther twin"
+kind = "pool"
+
+[[rival]]
+path = "specialists/20261027T202719Z-spec-lob_artist/genomes/18c8b5a5262fbdfcc87245f9a980de48d623d5f5990039df380ca6899f9d1773.bin"
+label = "lob artist"
+kind = "pool"
+
+[[rival]]
+path = "specialists/20261027T183713Z-spec-all_rounder/genomes/c7fd99648c6c14bd3c93fc4f20b87df9f2c60c3f076e8fed8594e12a3b83ddd7.bin"
+label = "all-rounder"
+kind = "pool"
+
+[[rival]]
+path = "specialists/20261027T192716Z-spec-sprinter/genomes/7ee02b1e8943f246a2cfc42fad00b360aa2fbd215630328721bc1fb7e5cc3ece.bin"
+label = "sprinter"
+kind = "pool"
+
+[[rival]]
+kind = "coach"
+
+[gate]
+coach = true
+
+[es]
+population = 64
+sigma = 0.03
+lr = 0.01
+train_seeds = 8
+graded_seeds = 16
+fresh_seeds = 8
+graded_every = 5
+
+[penalty]
+weight = 2.0
+
+# Windows from the quartiles of the 800 exported cells of runs 4 and 5 (27 October): mean_speed_after_hit q25 25.83,
+# q75 34.80, IQR 8.97; mean_hit_height q25 3.83, q75 5.47, IQR 1.64. The four quadrants: long ball (hard, low) and lob
+# artist (soft, high) exist; the spiker (hard, high) and the dinker (soft, low) are new.
+[window.long_ball]
+speed_min = 34.80
+speed_scale = 8.97
+hit_height_max = 3.83
+hit_height_scale = 1.64
+
+[window.lob_artist]
+speed_max = 25.83
+speed_scale = 8.97
+hit_height_min = 5.47
+hit_height_scale = 1.64
+
+[window.spiker]
+speed_min = 34.80
+speed_scale = 8.97
+hit_height_min = 5.47
+hit_height_scale = 1.64
+
+[window.dinker]
+speed_max = 25.83
+speed_scale = 8.97
+hit_height_max = 3.83
+hit_height_scale = 1.64
+
+[sprinter]
+lambda = 0.0046
+
+# Lazy: travel per tick is free up to cap_fraction of the start genome's own travel; above the cap, lambda points of
+# margin are lost per cap-width. The coach gate is the stall guard: a tie is not a win.
+[lazy]
+cap_fraction = 0.5
+lambda = 2.0

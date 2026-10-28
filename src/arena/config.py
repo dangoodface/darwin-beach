@@ -50,6 +50,12 @@ class Config:
     ladder_pool: tuple[dict, ...] = field(default_factory=tuple)
     ladder_hold_anchor: bool = False  # a promotion must also win the threshold against the anchor
     ladder_weight_scale: float = 0.0  # fitness weights a member by 10 ** ((rating - top) / scale); 0: all equal
+    ladder_fitness: str = "weighted"  # 28 October: "weighted" (the mean above) or "softmin" (the worst matchup improves)
+    ladder_softmin_top: int = 8  # softmin: over the mean margins against this many highest-rated members
+    ladder_softmin_temp: float = 0.5  # softmin: temperature in points of margin
+    ladder_coach_gate: bool = False  # a candidate that loses to the coach on average scores that margin minus ten
+    ladder_max_ticks: int = 0  # ladder matches (pool rating, promotion checks, newcomers) at this length; 0: max_ticks
+    inbox_every: int = 0  # every this many generations, genomes dropped in runs/<id>/inbox join the ladder; 0: off
     warm_runs: tuple[str, ...] = field(default_factory=tuple)  # exports (run ids or paths) whose elites seed the archive
 
     @classmethod
@@ -95,6 +101,12 @@ class Config:
             ladder_pool=tuple(dict(p) for p in ld.get("pool", ())),
             ladder_hold_anchor=bool(ld.get("hold_anchor", base.ladder_hold_anchor)),
             ladder_weight_scale=float(ld.get("weight_scale", base.ladder_weight_scale)),
+            ladder_fitness=str(ld.get("fitness", base.ladder_fitness)),
+            ladder_softmin_top=int(ld.get("softmin_top", base.ladder_softmin_top)),
+            ladder_softmin_temp=float(ld.get("softmin_temp", base.ladder_softmin_temp)),
+            ladder_coach_gate=bool(ld.get("coach_gate", base.ladder_coach_gate)),
+            ladder_max_ticks=int(ld.get("max_ticks", base.ladder_max_ticks)),
+            inbox_every=int(ld.get("inbox_every", base.inbox_every)),
             warm_runs=tuple(str(r) for r in d.get("warm", {}).get("runs", ())),
         )
         cfg.validate()
@@ -120,6 +132,10 @@ class Config:
             raise ValueError("optim.batch_size must split evenly over optim.emitters")
         if not 0.5 <= self.ladder_threshold <= 1.0:
             raise ValueError("ladder.threshold must be between 0.5 and 1")
+        if self.ladder_fitness not in ("weighted", "softmin"):
+            raise ValueError("ladder.fitness must be weighted or softmin")
+        if self.ladder_softmin_top < 1 or self.ladder_softmin_temp <= 0 or self.ladder_max_ticks < 0 or self.inbox_every < 0:
+            raise ValueError("ladder.softmin_top, softmin_temp, max_ticks and inbox_every must be positive (max_ticks and inbox_every may be 0)")
         if self.ladder_weight_scale < 0:
             raise ValueError("ladder.weight_scale must be 0 (equal weights) or positive")
         if self.ladder_pool and not self.ladder_enabled:
@@ -143,6 +159,9 @@ class Config:
                      "eval_seeds": [str(s) for s in self.eval_seeds]},
             "export": {"every_s": self.export_every_s, "tree_full_every_s": self.tree_full_every_s},
             "ladder": {"enabled": self.ladder_enabled, "check_every": self.ladder_check_every,
+                       "fitness": self.ladder_fitness, "softmin_top": self.ladder_softmin_top,
+                       "softmin_temp": self.ladder_softmin_temp, "coach_gate": self.ladder_coach_gate,
+                       "max_ticks": self.ladder_max_ticks, "inbox_every": self.inbox_every,
                        "seeds": self.ladder_seeds, "threshold": self.ladder_threshold,
                        "cycle_window": self.ladder_cycle_window,
                        "seed_list": [str(s) for s in self.ladder_seed_list],

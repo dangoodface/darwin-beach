@@ -215,6 +215,20 @@ class Ladder:
         self.pool_pairs = tuple(pairs)
         return self.pool_pairs
 
+    def add_member(self, workers: Workers, genome: Genome, kind: str = "exploiter", label: str | None = None,
+                   max_ticks: int = 3000) -> tuple[Member, tuple[Pair, ...]]:
+        """A newcomer (28 October: an exploiter trained outside the run) played against every member on the
+        ladder seeds, rated against their frozen ratings, frozen and appended. A new era: fitness changes."""
+        if genome.id in self.member_ids():
+            raise ValueError(f"{genome.id[:8]} is already a member")
+        vs = tuple(self.play(workers, genome, m, max_ticks) for m in self.members)
+        rating = elo_mle([(m.rating, p.score_a, p.n) for m, p in zip(self.members, vs)])
+        member = Member(genome.id, kind, rating, self.era + 1, genome, label=label)
+        self.members.append(member)
+        self.era += 1
+        self._failed.clear()
+        return member, vs
+
     def challenge(self, workers: Workers, challenger: Genome, gen: int, max_ticks: int = 3000) -> Challenge | None:
         """Plays the promotion check; on success the challenger joins and the era advances.
 

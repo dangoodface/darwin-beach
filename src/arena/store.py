@@ -152,6 +152,8 @@ class Store:
                     self._score(ctx, era, info.generation, r, "eval")
             if info.challenge is not None:
                 era = self._record_challenge(ctx, info)
+            if info.joined:
+                era = self._record_joined(ctx, info)
             best = arch.best()
             self.db.execute(
                 "INSERT INTO generations VALUES (?,?,?,?,?,?,?,?,?,?)",
@@ -168,6 +170,27 @@ class Store:
         self.db.execute("INSERT INTO ladder_results (run_id, era, kernel_sha, gen, purpose, a_id, b_id, n, wins_a,"
                         " draws, wins_b) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                         (ctx.run_id, era, ctx.kernel_sha, gen, purpose, p.a, p.b, p.n, p.wins_a, p.draws, p.wins_b))
+
+    def _record_joined(self, ctx: RunContext, info: GenerationInfo) -> int:
+        """Inbox newcomers (28 October): each a member row, its blocks against every earlier member, and the
+        re-scored archive once, unless a promotion this generation already wrote it. Returns the new era."""
+        gen = info.generation
+        for m, vs in info.joined:
+            self.db.execute("INSERT INTO ladder_members VALUES (?,?,?,?,?,?,?,?,?)",
+                            (ctx.run_id, m.since_era, ctx.kernel_sha, gen, m.id, m.kind, m.rating, None, m.label))
+            for p in vs:
+                self._pair(ctx, m.since_era, gen, "member", p)
+        era = info.joined[-1][0].since_era
+        if not (info.challenge is not None and info.challenge.promoted):
+            arch = ctx.archive
+            for r in info.rescored or []:
+                self._score(ctx, era, gen, r, "rescore")
+                self.db.execute(
+                    "INSERT INTO archive_events (run_id, era, kernel_sha, gen, event, cell_json, genome_id,"
+                    " evicted_id, fitness) VALUES (?,?,?,?,?,?,?,?,?)",
+                    (ctx.run_id, era, ctx.kernel_sha, gen, "rescore", json.dumps(list(arch.cell_of(r.bd))),
+                     r.genome.id, None, r.fitness))
+        return era
 
     def _record_challenge(self, ctx: RunContext, info: GenerationInfo) -> int:
         """Writes a promotion check; returns the era the generation ends in."""

@@ -30,13 +30,17 @@ from .export import _json_seed, _write_atomic, _write_json, _write_once
 from .genome import GENOME_LEN, N_HID, genome_id
 from .sim import DESCRIPTOR_NAMES, SCRIPTED_ID
 from .store import data_root
+from .pool import fit_params
 from .workers import Workers
 
 # Output layer of the 12-32-3 genome (kernel/src/policy.rs): W2[3][32] at 416, b2[3] at 512.
 # Output i is button i (bit 0 forward, bit 1 backward, bit 2 jump), pressed when the output is above zero.
 W2, B2, JUMP = 416, 512, 2
 EXTRA_NAMES = ("juggled_points", "max_streak")  # descriptors 8 and 9, kernel version 2
-STYLES = ("flat_earther", "kangaroo", "long_ball", "lob_artist", "sprinter", "all_rounder", "joga_bonito")
+STYLES = ("flat_earther", "kangaroo", "long_ball", "lob_artist", "sprinter", "all_rounder", "joga_bonito",
+          "spiker", "dinker", "one_touch", "lazy", "assassin")  # 28 October: gap styles, request styles, assassins
+WINDOW_STYLES = ("long_ball", "lob_artist", "spiker", "dinker")  # a window on hit speed and height, from [window.<name>]
+NO_TWIN = ("all_rounder", "assassin")  # nothing to remove: they are the plain margin against their rivals
 
 
 # ------------------------------------------------------------------ styles
@@ -57,15 +61,17 @@ class Bound:
     hi: float | None = None
     scale: float = 1.0  # a violation of one `scale` costs `weight` points
     lo_of: tuple[str, float] | None = None
+    hi_of: tuple[str, float] | None = None  # (other, fraction): hi = fraction * other
 
     def violation(self, d: dict[str, float]) -> float:
         v = d[self.name]
         lo = self.lo if self.lo_of is None else self.lo_of[1] * d[self.lo_of[0]]
+        hi = self.hi if self.hi_of is None else self.hi_of[1] * d[self.hi_of[0]]
         out = 0.0
         if lo is not None:
             out += max(0.0, lo - v)
-        if self.hi is not None:
-            out += max(0.0, v - self.hi)
+        if hi is not None:
+            out += max(0.0, v - hi)
         return out / self.scale
 
 
@@ -80,7 +86,8 @@ class Window:
         return all(b.violation(d) == 0.0 for b in self.bounds)
 
     def detail(self) -> dict:
-        return {b.name: {"min": b.lo, "max": b.hi, "min_fraction_of": list(b.lo_of) if b.lo_of else None}
+        return {b.name: {"min": b.lo, "max": b.hi, "min_fraction_of": list(b.lo_of) if b.lo_of else None,
+                         "max_fraction_of": list(b.hi_of) if b.hi_of else None}
                 for b in self.bounds}
 
 
@@ -89,7 +96,7 @@ class Style:
     name: str
     pin: bool | None = None  # True: jump always pressed; False: never; None: free
     window: Window | None = None
-    fitness: str = "mean"  # mean | min | sprinter | joga
+    fitness: str = "mean"  # mean | min | sprinter | joga | lazy
     descriptors: int = 8  # how many descriptors the simulator must report
     twin: bool = False  # the unconstrained twin: same start, no repair, window or extra terms
 
@@ -123,6 +130,10 @@ class SpecialistConfig:
     sprinter_lambda: float = 0.1
     joga_bonus: float = 0.25
     joga_min_fraction: float = 1 / 3
+    coach_gate: bool = True  # 28 October: a candidate that loses to the coach scores below every one that does not
+    lazy_fraction: float = 0.5  # lazy: free travel up to this fraction of the start's travel per tick
+    lazy_lambda: float = 2.0  # lazy: points of fitness lost per cap-width of travel above the cap
+    lazy_cap: float | None = None  # set from the start genome when training begins
 
 
 def load_config(path: str | Path) -> SpecialistConfig:
@@ -139,7 +150,9 @@ def load_config(path: str | Path) -> SpecialistConfig:
         penalty_weight=pen.get("weight", 2.0), windows=t.get("window", {}),
         sprinter_lambda=t.get("sprinter", {}).get("lambda", 0.1),
         joga_bonus=t.get("joga", {}).get("bonus", 0.25),
-        joga_min_fraction=t.get("joga", {}).get("min_fraction", 1 / 3))
+        joga_min_fraction=t.get("joga", {}).get("min_fraction", 1 / 3),
+        coach_gate=t.get("gate", {}).get("coach", True),
+        lazy_fraction=t.get("lazy", {}).get("cap_fraction", 0.5), lazy_lambda=t.get("lazy", {}).get("lambda", 2.0))
     if c.population < 2 or c.population % 2:
         raise ValueError("es.population must be even (antithetic pairs)")
     return c
@@ -153,26 +166,35 @@ def make_style(name: str, cfg: SpecialistConfig, twin: bool = False) -> Style:
         s = Style(name, pin=False)
     elif name == "kangaroo":
         s = Style(name, pin=True)
-    elif name in ("long_ball", "lob_artist"):
+    elif name in WINDOW_STYLES:
         c = w[name]
-        if name == "long_ball":
-            bounds = (Bound("mean_speed_after_hit", lo=c["speed_min"], scale=c["speed_scale"]),
-                      Bound("mean_hit_height", hi=c["hit_height_max"], scale=c["hit_height_scale"]))
-        else:
-            bounds = (Bound("mean_speed_after_hit", hi=c["speed_max"], scale=c["speed_scale"]),
-                      Bound("mean_hit_height", lo=c["hit_height_min"], scale=c["hit_height_scale"]))
-        s = Style(name, window=Window(bounds))
+        bounds = []
+        if "speed_min" in c:
+            bounds.append(Bound("mean_speed_after_hit", lo=c["speed_min"], scale=c["speed_scale"]))
+        if "speed_max" in c:
+            bounds.append(Bound("mean_speed_after_hit", hi=c["speed_max"], scale=c["speed_scale"]))
+        if "hit_height_min" in c:
+            bounds.append(Bound("mean_hit_height", lo=c["hit_height_min"], scale=c["hit_height_scale"]))
+        if "hit_height_max" in c:
+            bounds.append(Bound("mean_hit_height", hi=c["hit_height_max"], scale=c["hit_height_scale"]))
+        s = Style(name, window=Window(tuple(bounds)))
+    elif name == "one_touch":  # every return on the first touch: no point won after a juggle
+        s = Style(name, window=Window((Bound("juggled_points", hi=0.0, scale=1.0),)), descriptors=10)
+    elif name == "lazy":  # the least travel that still wins: a soft cap on distance per tick
+        s = Style(name, fitness="lazy")
     elif name == "sprinter":
         s = Style(name, fitness="sprinter")
     elif name == "all_rounder":
         s = Style(name, fitness="min")
+    elif name == "assassin":  # the plain mean margin; the rivals (one target, the coach as the gate) are the style
+        s = Style(name)
     else:  # joga_bonito
         s = Style(name, window=Window((Bound("juggled_points", lo_of=("points", cfg.joga_min_fraction),
                                              scale=max(1.0, 5 * cfg.joga_min_fraction)),)),
                   fitness="joga", descriptors=10)
     if twin:
-        if name == "all_rounder":
-            raise ValueError("all_rounder is its own twin: it has no constraint to remove")
+        if name in NO_TWIN:
+            raise ValueError(f"{name} is its own twin: it has no constraint to remove")
         return Style(name, twin=True, pin=s.pin, window=s.window, fitness=s.fitness)
     return s
 
@@ -250,23 +272,37 @@ def desc_names(d: int) -> tuple[str, ...]:
     return DESCRIPTOR_NAMES + EXTRA_NAMES[: max(0, d - len(DESCRIPTOR_NAMES))]
 
 
-def score(style: Style, cfg: SpecialistConfig, m: Matches, names: tuple[str, ...]) -> tuple[np.ndarray, np.ndarray]:
-    """(fitness, penalty) per candidate. A twin, and every style's non-window terms off, is the mean margin."""
+def travel_per_tick(m: Matches, names: tuple[str, ...]) -> np.ndarray:
+    """(n,): the candidate's distance per tick, mean over its matches."""
+    return (m.desc[..., names.index("distance")] / np.maximum(1, m.ticks)).mean(axis=(1, 2, 3))
+
+
+def score(style: Style, cfg: SpecialistConfig, m: Matches, names: tuple[str, ...],
+          weights: np.ndarray | None = None, coach: int | None = None) -> tuple[np.ndarray, np.ndarray]:
+    """(fitness, penalty) per candidate. A twin, and every style's non-window terms off, is the mean margin
+    over the rivals (weighted when the rivals carry weights). The coach gate (28 October) applies to every style
+    and twin: a candidate that loses to the coach on average scores that margin minus ten, below any that does not."""
     marg = m.margins()
-    if style.twin:
-        return marg.mean(axis=1), np.zeros(len(marg))
-    if style.fitness == "min":
+    w = np.ones(marg.shape[1]) if weights is None else np.asarray(weights, dtype=float)
+    wmean = marg @ w / w.sum()
+    if style.fitness == "min" and not style.twin:
         fit = marg.min(axis=1)
     else:
-        fit = marg.mean(axis=1)
-    if style.fitness == "sprinter":
-        fit = fit - cfg.sprinter_lambda * m.ticks_per_point()
-    if style.fitness == "joga":
-        fit = fit + cfg.joga_bonus * m.mean_desc()[:, names.index("juggled_points")]
+        fit = wmean
+    if not style.twin:
+        if style.fitness == "sprinter":
+            fit = fit - cfg.sprinter_lambda * m.ticks_per_point()
+        if style.fitness == "joga":
+            fit = fit + cfg.joga_bonus * m.mean_desc()[:, names.index("juggled_points")]
+        if style.fitness == "lazy" and cfg.lazy_cap:
+            fit = fit - cfg.lazy_lambda * np.maximum(0.0, travel_per_tick(m, names) / cfg.lazy_cap - 1.0)
     pen = np.zeros(len(marg))
-    if style.window is not None:
+    if style.window is not None and not style.twin:
         md = m.mean_desc()
         pen = np.array([cfg.penalty_weight * style.window.violation(dict(zip(names, row))) for row in md])
+    if cfg.coach_gate and coach is not None:
+        cm = marg[:, coach]
+        fit = np.where(cm < 0, cm - 10.0, fit)
     return fit - pen, pen
 
 
@@ -322,11 +358,11 @@ def pick_start(style: Style, cfg: SpecialistConfig) -> tuple[str, str, list[int]
             return c["bd"][1] <= 0.05
         if style.name == "kangaroo":
             return c["bd"][1] >= 0.9
-        if style.window is not None and style.name in ("long_ball", "lob_artist") and c.get("desc"):
-            return style.window.satisfied(dict(zip(names, c["desc"])))
+        if style.window is not None and c.get("desc"):
+            return style.window.satisfied(dict(zip(desc_names(len(c["desc"])), c["desc"])))
         return False
 
-    if style.name in ("flat_earther", "kangaroo", "long_ball", "lob_artist"):
+    if style.name in ("flat_earther", "kangaroo") or (style.window is not None and style.name != "joga_bonito"):
         for run in (cfg.start_run, cfg.fallback_run):
             if not run:
                 continue
@@ -358,7 +394,14 @@ def fresh_verdict(style: Style, cfg: SpecialistConfig, m: Matches, names: tuple[
         ok = ok and style.window.satisfied(d)
     if style.fitness == "min" and not style.twin:
         proof["min_margin"] = min(v["margin"] for v in per.values())
-    return {"per": per, "desc": d, "proof": proof, "ok": ok}
+    if style.fitness == "lazy" and not style.twin:
+        travel = float(travel_per_tick(m, names)[0])
+        proof.update({"travel_per_tick": travel, "travel_cap": cfg.lazy_cap})
+        ok = ok and cfg.lazy_cap is not None and travel <= cfg.lazy_cap
+    points = float((mine + theirs).mean())  # per match; a stall is a match nobody scores in
+    return {"per": per, "desc": d, "proof": proof, "ok": ok,
+            "wins_all": all(v["won"] > v["n"] / 2 for v in per.values()), "points_per_match": points,
+            "stalled": points < 2.0}
 
 
 def showcase(m: Matches, names: tuple[str, ...], rival_ids: list[str], seeds: tuple[int, ...], per_rival: int = 2) -> list:
@@ -375,7 +418,8 @@ def showcase(m: Matches, names: tuple[str, ...], rival_ids: list[str], seeds: tu
 # ------------------------------------------------------------------ the run
 
 def train(style: Style, cfg: SpecialistConfig, workers: Workers, rival_params, rival_ids, scripted_slot,
-          start: np.ndarray, minutes: float | None, generations: int | None, log=print) -> dict:
+          start: np.ndarray, minutes: float | None, generations: int | None, log=print,
+          weights: np.ndarray | None = None, coach: int | None = None) -> dict:
     root = np.random.SeedSequence(cfg.seed)
     train_ss, graded_ss, fresh_ss = root.spawn(3)
     train_rng = np.random.default_rng(train_ss)
@@ -392,7 +436,7 @@ def train(style: Style, cfg: SpecialistConfig, workers: Workers, rival_params, r
         if len(names) < style.descriptors:
             raise SystemExit(f"{style.name} needs {style.descriptors} descriptors; the simulator reports {len(names)} "
                              "(kernel version 2 adds juggled_points and max_streak)")
-        fit, pen = score(style, cfg, m, names)
+        fit, pen = score(style, cfg, m, names, weights, coach)
         return m, fit, pen
 
     theta = style.repair(start).astype(np.float64)
@@ -400,6 +444,10 @@ def train(style: Style, cfg: SpecialistConfig, workers: Workers, rival_params, r
     t0 = time.monotonic()
     curve: list[dict] = []
     m0, f0, _ = play_scores(theta[None, :].astype(np.float32), graded)
+    if style.fitness == "lazy" and not style.twin and cfg.lazy_cap is None:
+        cfg.lazy_cap = float(cfg.lazy_fraction * travel_per_tick(m0, names)[0])
+        log(f"lazy cap: {cfg.lazy_cap:.4f} per tick, {cfg.lazy_fraction:.2f} of the start's travel")
+        _, f0, _ = play_scores(theta[None, :].astype(np.float32), graded)
     best, best_fit = theta.copy(), float(f0[0])
     gen = 0
     while (generations is None or gen < generations) and (minutes is None or time.monotonic() - t0 < minutes * 60):
@@ -428,26 +476,49 @@ def train(style: Style, cfg: SpecialistConfig, workers: Workers, rival_params, r
             "play": play_scores, "names": names}
 
 
+def resolve_genome(path: str, root: Path) -> np.ndarray:
+    p = Path(path)
+    p = p if p.is_absolute() else root / p
+    return np.frombuffer(p.read_bytes(), dtype="<f4").copy()
+
+
 def run_specialist(style_name: str, twin: bool, cfg: SpecialistConfig, minutes: float | None, workers_n: int,
                    generations: int | None = None, root: Path | None = None, now: datetime | None = None,
-                   log=print) -> Path:
+                   log=print, name: str | None = None, start_path: str | None = None,
+                   rivals: list[dict] | None = None) -> Path:
+    """`rivals` (28 October) replaces the config's: dicts with `path` (a genome file, relative to the data root)
+    or `kind: coach`, plus optional `weight` (default 1) and `label`. The coach is always a rival: it is the gate."""
     style = make_style(style_name, cfg, twin)
     now = now or datetime.now(timezone.utc)
-    run_id = f"{now.strftime('%Y%m%dT%H%M%SZ')}-spec-{style_name}" + ("-twin" if twin else "")
+    run_id = f"{now.strftime('%Y%m%dT%H%M%SZ')}-spec-{name or style_name}" + ("-twin" if twin else "")
     root = root or data_root()
     out = root / "specialists" / run_id
-    start_id, start_run, start_cell, why = pick_start(make_style(style_name, cfg, False), cfg)
-    start = load_genome(start_run, start_id)
-    rival_ids, rival_params, rival_kinds = [], [], []
-    for r in cfg.rivals:
-        if r["kind"] == "coach":
-            rival_ids.append(SCRIPTED_ID); rival_params.append(None)
+    if start_path:
+        start, start_run, start_cell, why = resolve_genome(start_path, root), f"file:{start_path}", None, "the genome file given"
+        start_id = None  # known once the kernel is
+    else:
+        start_id, start_run, start_cell, why = pick_start(make_style(style_name, cfg, False), cfg)
+        start = load_genome(start_run, start_id)
+    specs = list(rivals if rivals is not None else cfg.rivals)
+    if not any(r.get("kind") == "coach" for r in specs):
+        specs.append({"kind": "coach"})
+    rival_ids, rival_params, rival_kinds, rival_weights, rival_labels = [], [], [], [], []
+    for r in specs:
+        if r.get("kind") == "coach":
+            rival_ids.append(SCRIPTED_ID); rival_params.append(None); rival_kinds.append("coach")
         else:
-            rival_ids.append(r["id"]); rival_params.append(load_genome(r["out_run"], r["id"]))
-        rival_kinds.append(r["kind"])
+            params = resolve_genome(r["path"], root) if "path" in r else load_genome(r["out_run"], r["id"])
+            rival_ids.append(r.get("id")); rival_params.append(params); rival_kinds.append(r.get("kind", "rival"))
+        rival_weights.append(float(r.get("weight", 1.0))); rival_labels.append(r.get("label"))
+    coach = rival_ids.index(SCRIPTED_ID)
     with Workers(cfg.sim_kind, cfg.kernel_path, workers_n, 128) as workers:
         kernel_sha, kernel_version, glen, scripted = workers.simulator_info
-        res = train(style, cfg, workers, rival_params, rival_ids, scripted, start, minutes, generations, log)
+        start = fit_params(start, glen, "the start genome")  # padded when it comes from a narrower kernel
+        rival_params = [None if p is None else fit_params(p, glen, "a rival") for p in rival_params]
+        start_id = genome_id(start, kernel_sha)  # under this kernel; `start_run` keeps where it came from
+        rival_ids = [rid if rid == SCRIPTED_ID else genome_id(p, kernel_sha) for rid, p in zip(rival_ids, rival_params)]
+        res = train(style, cfg, workers, rival_params, rival_ids, scripted, start, minutes, generations, log,
+                    np.array(rival_weights), coach)
         final, arena, names = res["final"], res["arena"], res["names"]
         g_m = arena.play(final[None, :], res["graded"])
         f_m = arena.play(final[None, :], res["fresh"])
@@ -471,18 +542,24 @@ def run_specialist(style_name: str, twin: bool, cfg: SpecialistConfig, minutes: 
                                                           "weights_zeroed": f"W2[{JUMP}][*]", "bias": 1.0 if style.pin else -1.0}}
     elif style.window is not None:
         constraint = {"kind": "descriptor_window", "detail": style.window.detail()}
+    elif style.name == "assassin":
+        constraint = {"kind": "rivals", "detail": "the plain mean margin; the target rival is the style"}
     else:
         constraint = {"kind": "fitness", "detail": style.fitness}
     result = {
-        "style": style_name, "twin": twin, "constraint": constraint,
+        "style": style_name, "twin": twin, "constraint": constraint, "name": name or style_name, "seed": cfg.seed,
+        "gate": {"coach": cfg.coach_gate}, "lazy_cap": cfg.lazy_cap,
         "start": {"genome_id": start_id, "run_id": start_run, "cell": start_cell, "reason": why},
-        "rivals": [{"id": i, "kind": k} for i, k in zip(rival_ids, rival_kinds)],
+        "rivals": [{"id": i, "kind": k, "weight": w, "label": l}
+                   for i, k, w, l in zip(rival_ids, rival_kinds, rival_weights, rival_labels)],
         "seeds": {"train": {"per_generation": cfg.train_seeds, "resampled": "every generation, from the run's stream"},
                   "graded": [_json_seed(s) for s in res["graded"]], "fresh": [_json_seed(s) for s in res["fresh"]]},
         "generations": res["generations"], "matches_total": arena.matches_total, "elapsed_s": res["elapsed_s"],
         "kernel_sha": kernel_sha, "kernel_version": kernel_version,
         "final": {"genome_id": fid, "graded": graded, "fresh": verdict["per"],
                   "descriptors_fresh_mean": verdict["desc"], "constraint_satisfied": verdict["ok"],
+                  "wins_all": verdict["wins_all"], "stalled": verdict["stalled"],
+                  "points_per_match": verdict["points_per_match"],
                   "proof": verdict["proof"], "showcase": showcase(f_m, names, rival_ids, res["fresh"])},
         "curve": res["curve"],
     }
@@ -498,12 +575,27 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--generations", type=int, help="stop after this many (tests, smoke runs)")
     ap.add_argument("--workers", type=int, default=8)
     ap.add_argument("--config", default="configs/specialists.toml")
+    ap.add_argument("--name", help="run id and result name instead of the style's (assassins, the patch test)")
+    ap.add_argument("--start-genome", help="start from this genome file instead of the start run's cells")
+    ap.add_argument("--rival", action="append", default=[],
+                    help="PATH[:WEIGHT[:LABEL]], repeatable; replaces the config's rivals (the coach is always added)")
+    ap.add_argument("--seed", type=int, help="override the config seed (a twin keeps its specialist's seed)")
     args = ap.parse_args(argv)
     cfg = load_config(args.config)
-    out = run_specialist(args.style, args.twin, cfg, args.minutes, args.workers, args.generations)
+    if args.seed is not None:
+        cfg.seed = args.seed
+    rivals = None
+    if args.rival:
+        rivals = []
+        for spec in args.rival:
+            parts = spec.split(":")
+            rivals.append({"path": parts[0], "weight": float(parts[1]) if len(parts) > 1 and parts[1] else 1.0,
+                           "label": parts[2] if len(parts) > 2 else None, "kind": "rival"})
+    out = run_specialist(args.style, args.twin, cfg, args.minutes, args.workers, args.generations,
+                         name=args.name, start_path=args.start_genome, rivals=rivals)
     r = json.loads((out / "result.json").read_text())["final"]
     print(f"{out}: fresh " + ", ".join(f"{k[:8]} {v['won']}/{v['n']} {v['margin']:+.2f}" for k, v in r["fresh"].items())
-          + f"; constraint satisfied: {r['constraint_satisfied']}")
+          + f"; constraint satisfied: {r['constraint_satisfied']}; beats all: {r['wins_all']}; stalled: {r['stalled']}")
     return 0
 
 

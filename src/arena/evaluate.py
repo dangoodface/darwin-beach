@@ -42,8 +42,17 @@ class Evaluator:
         indices: tuple[int, ...],
         max_ticks: int = 3000,
         ladder: Ladder | None = None,
+        fitness_kind: str = "weighted",
+        softmin_top: int = 8,
+        softmin_temp: float = 0.5,
+        coach_gate: bool = False,
     ) -> None:
+        """`fitness_kind` (28 October): "weighted" is the rating-weighted mean margin over the members (plain mean
+        when the ladder's weight scale is 0); "softmin" is a smooth minimum, at temperature `softmin_temp` points,
+        of the mean margins against the `softmin_top` highest-rated members, so the worst matchup is what
+        improves. `coach_gate`: a candidate that loses to the coach on average scores that margin minus ten."""
         self.workers, self.probes, self.seeds = workers, probes, seeds
+        self.fitness_kind, self.softmin_top, self.softmin_temp, self.coach_gate = fitness_kind, softmin_top, softmin_temp, coach_gate
         # the probe set: the scripted bot first (when the simulator has one), then the frozen genomes.
         # Each opponent is (id, table slot or the scripted slot); genome probes sit in slots 0..n-1.
         self.opponents: list[tuple[str, int]] = (
@@ -126,6 +135,7 @@ class Evaluator:
         rating_of = {m.id: m.rating for m in self.ladder.members}
         weight = self.ladder.weights()
         member_margins: list[int] = []
+        means: dict[str, float] = {}
         records = []
         weighted = total = 0.0
         for o, (oid, _) in enumerate(opponents):
@@ -133,10 +143,25 @@ class Evaluator:
                 continue
             block = margins[o * per_opp : (o + 1) * per_opp]
             member_margins.extend(block)
-            weighted += weight[oid] * float(np.mean(block))
+            means[oid] = float(np.mean(block))
+            weighted += weight[oid] * means[oid]
             total += weight[oid]
             score = sum(1.0 if m > 0 else 0.5 if m == 0 else 0.0 for m in block)
             records.append((rating_of[oid], score, len(block)))
-        if not self.ladder.weight_scale:  # every member counts the same: the plain mean, as before run 6
-            return float(np.mean(member_margins)), elo_mle(records)
-        return weighted / total, elo_mle(records)
+        if self.fitness_kind == "softmin":
+            top = sorted((oid for oid in means if oid != SCRIPTED_ID), key=lambda oid: -rating_of[oid])[: self.softmin_top]
+            fitness = softmin(np.array([means[oid] for oid in top]), self.softmin_temp)
+        elif not self.ladder.weight_scale:  # every member counts the same: the plain mean, as before run 6
+            fitness = float(np.mean(member_margins))
+        else:
+            fitness = weighted / total
+        if self.coach_gate and SCRIPTED_ID in means and means[SCRIPTED_ID] < 0:
+            fitness = means[SCRIPTED_ID] - 10.0
+        return fitness, elo_mle(records)
+
+
+def softmin(values: np.ndarray, temp: float) -> float:
+    """A smooth minimum: -temp * log(mean(exp(-values / temp))); the minimum as temp goes to 0."""
+    x = -np.asarray(values, dtype=np.float64) / temp
+    m = float(x.max())
+    return float(-temp * (m + np.log(np.mean(np.exp(x - m)))))

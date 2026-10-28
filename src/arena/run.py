@@ -23,7 +23,7 @@ from .fresh import FRESH_SEEDS, FreshCheck
 from .genome import Genome, make_genome, random_params
 from .ladder import Challenge, Ladder
 from .optim import CmaMe, EvalResult, MapElites
-from .pool import load_pool, load_warm
+from .pool import load_pool, load_warm, read_params
 from .workers import Workers, make_simulator
 
 # Spawn order of the root SeedSequence. Appending is safe; reordering changes every run.
@@ -58,7 +58,8 @@ class GenerationInfo:
     era: int = 0  # the era this generation's candidates were evaluated in
     matches_per_candidate: int = 0  # matches each of this generation's candidates played
     challenge: Challenge | None = None  # v1: the promotion check played after this generation, if any
-    rescored: list[EvalResult] | None = None  # v1: the live elites re-evaluated when the check promoted
+    rescored: list[EvalResult] | None = None  # v1: the live elites re-evaluated when the check promoted (or a newcomer joined)
+    joined: list | None = None  # 28 October: (member, pairs) per inbox genome that joined the ladder this generation
 
 
 class Observer(Protocol):
@@ -94,6 +95,28 @@ def rescore(archive: Archive, evaluator: Evaluator) -> tuple[Archive, list[EvalR
             raise RuntimeError(f"re-scoring put two elites in cell {fresh.cell_of(r.bd)}")
         placed.append(r)
     return fresh, placed
+
+
+def inbox_dir(run_id: str) -> Path:
+    from .store import data_root  # lazy: the store imports this module
+
+    return data_root() / "runs" / run_id / "inbox"
+
+
+def take_inbox(ctx: RunContext, ladder: Ladder, workers: Workers, gen: int, max_ticks: int) -> list:
+    """Genome files dropped in runs/<id>/inbox/*.bin (28 October: exploiters trained beside the run) join the
+    ladder as members of kind "exploiter", rated on the ladder seeds; each file then moves to inbox/done/."""
+    box = inbox_dir(ctx.run_id)
+    joined = []
+    for path in sorted(box.glob("*.bin")) if box.is_dir() else []:
+        params = read_params(path, ctx.genome_len)
+        g = make_genome(params, ctx.kernel_sha, (), "exploiter", gen)
+        done = box / "done"
+        done.mkdir(exist_ok=True)
+        if g.id not in ladder.member_ids():
+            joined.append(ladder.add_member(workers, g, "exploiter", path.stem, max_ticks))
+        path.rename(done / path.name)
+    return joined
 
 
 def tell_each(opt, archive: Archive, results: list[EvalResult]) -> tuple[list[str], list[str | None]]:
@@ -134,7 +157,7 @@ def run(
             ladder = Ladder(sim_scripted, ladder_seeds, cfg.ladder_threshold, cfg.ladder_cycle_window,
                             pool, cfg.ladder_hold_anchor, cfg.ladder_weight_scale)
             if pool:  # the round robin: 100 blocks of ladder seeds for a pool of 23, a few seconds
-                ladder.rate_pool(workers, cfg.max_ticks)
+                ladder.rate_pool(workers, cfg.ladder_max_ticks or cfg.max_ticks)
 
         probe_rng = np.random.default_rng(probe_ss)
         probes = [
@@ -156,7 +179,8 @@ def run(
         else:
             opt = MapElites(archive, optim_rng, kernel_sha, genome_len,
                             cfg.batch_size, cfg.init_size, cfg.sigma, cfg.crossover_frac)
-        evaluator = Evaluator(workers, probes, scripted_slot, seeds, cfg.indices, cfg.max_ticks, ladder)
+        evaluator = Evaluator(workers, probes, scripted_slot, seeds, cfg.indices, cfg.max_ticks, ladder,
+                              cfg.ladder_fitness, cfg.ladder_softmin_top, cfg.ladder_softmin_temp, cfg.ladder_coach_gate)
 
         fresh = None
         if sim_scripted is not None:
@@ -194,15 +218,21 @@ def run(
             cands = opt.ask()
             results = evaluator.evaluate(cands)
             outcomes, evicted = tell_each(opt, archive, results)
-            challenge = rescored = None
+            challenge = rescored = joined = None
             if ladder is not None and (gen + 1) % cfg.ladder_check_every == 0 and archive.best() is not None:
-                challenge = ladder.challenge(workers, archive.best().genome, gen, cfg.max_ticks)
+                challenge = ladder.challenge(workers, archive.best().genome, gen, cfg.ladder_max_ticks or cfg.max_ticks)
                 if challenge is not None and challenge.promoted:
+                    archive, rescored = rescore(archive, evaluator)
+                    opt.archive = ctx.archive = archive
+            if ladder is not None and cfg.inbox_every and (gen + 1) % cfg.inbox_every == 0:
+                joined = take_inbox(ctx, ladder, workers, gen, cfg.ladder_max_ticks or cfg.max_ticks)
+                if joined:
                     archive, rescored = rescore(archive, evaluator)
                     opt.archive = ctx.archive = archive
             matches = evaluator.matches_total + (ladder.matches_total if ladder else 0)
             info = GenerationInfo(gen, results, outcomes, evicted, matches,
-                                  time.monotonic() - ctx.started_mono, era, per_candidate, challenge, rescored)
+                                  time.monotonic() - ctx.started_mono, era, per_candidate, challenge, rescored,
+                                  joined)
             for o in observers:
                 o.on_generation(ctx, info)
             gen += 1

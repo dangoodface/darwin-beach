@@ -25,10 +25,25 @@ def resolve(path: str) -> Path:
 
 
 def read_params(path: Path, genome_len: int) -> np.ndarray:
-    data = path.read_bytes()
-    if len(data) != genome_len * 4:
-        raise ValueError(f"{path}: {len(data)} bytes, expected {genome_len * 4}")
-    return np.frombuffer(data, dtype="<f4").astype(np.float32)
+    params = np.frombuffer(path.read_bytes(), dtype="<f4").astype(np.float32)
+    return fit_params(params, genome_len, str(path))
+
+
+def fit_params(params: np.ndarray, genome_len: int, what: str = "genome") -> np.ndarray:
+    """`params` at this kernel's width: as they are when they fit, padded by the kernel's helper when they
+    come from a narrower kernel (28 October: v2's 515 into v3's 1,027 play bit for bit the same), else an error."""
+    if len(params) == genome_len:
+        return params
+    if len(params) < genome_len:
+        try:
+            from .genome import pad_params  # arrives with kernel v3
+        except ImportError as e:
+            raise ValueError(f"{what}: {len(params)} values, the kernel wants {genome_len}, and there is no padding helper") from e
+        out = np.asarray(pad_params(params), dtype=np.float32)
+        if len(out) != genome_len:
+            raise ValueError(f"{what}: padded to {len(out)} values, the kernel wants {genome_len}")
+        return out
+    raise ValueError(f"{what}: {len(params)} values, expected {genome_len}")
 
 
 def load_pool(entries: Sequence[dict], kernel_sha: str, genome_len: int) -> list[Member]:

@@ -134,6 +134,7 @@ def test_result_json_schema_and_contract(tmp_path, monkeypatch):
     r = json.loads((out / "result.json").read_text())
     assert out.name == "20261027T140000Z-spec-flat_earther"
     assert set(r) == {"style", "twin", "constraint", "start", "rivals", "seeds", "generations", "matches_total",
+                      "name", "seed", "gate", "lazy_cap",
                       "elapsed_s", "kernel_sha", "kernel_version", "final", "curve"}
     assert r["style"] == "flat_earther" and r["twin"] is False and r["constraint"]["kind"] == "pinned_output"
     assert r["start"] == {"genome_id": "r5-0", "run_id": "r5", "cell": [0, 0], "reason": "best lit cell that fits, of 1"}
@@ -141,7 +142,8 @@ def test_result_json_schema_and_contract(tmp_path, monkeypatch):
     assert len(r["seeds"]["graded"]) == 3 and len(r["seeds"]["fresh"]) == 2
     assert not set(r["seeds"]["fresh"]) & set(r["seeds"]["graded"])
     f = r["final"]
-    assert set(f) == {"genome_id", "graded", "fresh", "descriptors_fresh_mean", "constraint_satisfied", "proof", "showcase"}
+    assert set(f) == {"genome_id", "graded", "fresh", "descriptors_fresh_mean", "constraint_satisfied", "proof", "showcase",
+                      "wins_all", "stalled", "points_per_match"}
     for sect, n in (("graded", 6), ("fresh", 4)):
         assert set(f[sect]) == {x["id"] for x in r["rivals"]}
         assert all(set(v) == {"won", "n", "margin"} and v["n"] == n for v in f[sect].values())
