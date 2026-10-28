@@ -65,8 +65,9 @@ def test_fit_params_passes_equal_lengths_and_refuses_the_rest():
     assert fit_params(p, 4) is p
     with pytest.raises(ValueError, match="expected 4"):
         fit_params(np.arange(6, dtype=np.float32), 4)
-    with pytest.raises(ValueError, match="kernel wants 8"):
+    with pytest.raises(ValueError):  # shorter than the kernel: padded only when the helper accepts it (515 into 1027)
         fit_params(p, 8)
+    assert len(fit_params(np.zeros(515, dtype=np.float32), 1027)) == 1027
 
 
 def test_league_config_round_trip():
