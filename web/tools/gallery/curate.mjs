@@ -246,7 +246,8 @@ const def = JSON.parse(readFileSync(join(OUT, RUN.r6, "definitive.json"), "utf8"
 const DEF_SEEDS = def.seeds.map(BigInt);
 const lb = def.leaderboard, byLabel = (l) => lb.find((e) => e.label === l);
 const king = lb[0], lob = byLabel("lob artist"), coachE = byLabel("the coach");
-const exploit = lb.find((e) => e.kind === "elite"), elite6 = lb.find((e) => e.label.startsWith("run 6 elite #6"));
+// The exploit: the top-rated new brain among those that win less than a quarter against the coach.
+const exploit = lb.find((e) => e.kind === "elite" && def.matrix.winrate[def.matrix.ids.indexOf(e.id)][def.matrix.ids.indexOf("scripted-v1")] < 0.25), elite6 = lb.find((e) => e.label.startsWith("run 6 elite #6"));
 const shortName = (e) => e.kind === "scripted" ? "COACH" : e.label.replace(/^run 6 elite (#\d).*/, "RUN 6 $1").replace(/^run 5 champion /, "CHAMP ").toUpperCase();
 const side = (e) => ({ label: shortName(e), kind: e.kind === "scripted" ? "coach" : "bot" });
 const rec5 = (e) => def.top.record[e.id];
@@ -266,8 +267,24 @@ act5("The king has a weakness", lob, king, () => `The Lob Artist, rank 2, takes 
 act5("Rock, paper, scissors", elite6, king, () => `Run 6's sixth-best brain ranks ${elite6.rank}th of ${lb.length}, yet it takes ${pc(wr(elite6, king))} against the king${TIE}. At the top nobody beats everyone: just cycles.`, true);
 act5("The exploit", exploit, coachE, (g) => `Run 6's highest scorer ranks ${exploit.rank}th: it beats the specialists more often than not, and against the coach it takes ${pc(wr(exploit, coachE))}${TIE}. The fitness weighted each rival by its rating, which made the coach worth a twelfth of the king, so evolution learned to ignore it. The promotion gate caught it.`, false);
 
+// ---------- the arcade: rated rivals for the viewer ----------
+const ARCADE = [
+  ["run 5 champion #1", "Run 5's first champion, the lowest-rated bot on the ladder. A gentle start."],
+  ["run 4 champion", "Run 4's champion, the first bot to beat the coach."],
+  ["the coach", "The hand-written bot every run trained against. It never learns, and it never tires."],
+  ["run 5 champion #10", "The best bot of the first night. It beats the coach nine times in ten."],
+  ["kangaroo", "Always in the air."],
+  ["joga bonito", "Juggles half its points before the kill."],
+  ["lob artist", "Slow, hanging balls. The one bot the king cannot handle."],
+  ["flat earther twin", "Rank 1 of 30. Jumps only to hit, then winds up and lunges through the ball."],
+];
+const arcade = ARCADE.map(([l, note]) => [byLabel(l), note]).filter(([e]) => e).map(([e, note]) => {
+  if (e.kind !== "scripted") slot("r6", e.id);
+  return { id: e.id, label: shortName(e), kind: e.kind === "scripted" ? "coach" : "bot", rating: Math.round(e.rating), note };
+}).sort((a, b) => a.rating - b.rating);
+
 const args = process.argv.slice(2);
 const out = args[args.indexOf("--out") + 1] ?? "gallery.json";
-const used = Object.fromEntries(matches.flatMap((m) => [m.left.id, m.right.id]).filter((id) => id !== COACH).map((id) => [id, brains[id]]));
-writeFileSync(out, JSON.stringify({ kernel: kernelPath, made: new Date().toISOString(), matches, brains: used }));
+const used = Object.fromEntries([...matches.flatMap((m) => [m.left.id, m.right.id]), ...arcade.map((r) => r.id)].filter((id) => id !== COACH).map((id) => [id, brains[id]]));
+writeFileSync(out, JSON.stringify({ kernel: kernelPath, made: new Date().toISOString(), matches, brains: used, arcade }));
 console.log(`wrote ${out}: ${matches.length} matches, ${Object.keys(used).length} brains`);
