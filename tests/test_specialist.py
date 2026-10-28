@@ -134,7 +134,7 @@ def test_result_json_schema_and_contract(tmp_path, monkeypatch):
     r = json.loads((out / "result.json").read_text())
     assert out.name == "20261027T140000Z-spec-flat_earther"
     assert set(r) == {"style", "twin", "constraint", "start", "rivals", "seeds", "generations", "matches_total",
-                      "name", "seed", "gate", "lazy_cap",
+                      "name", "seed", "gate", "lazy_cap", "hold",
                       "elapsed_s", "kernel_sha", "kernel_version", "final", "curve"}
     assert r["style"] == "flat_earther" and r["twin"] is False and r["constraint"]["kind"] == "pinned_output"
     assert r["start"] == {"genome_id": "r5-0", "run_id": "r5", "cell": [0, 0], "reason": "best lit cell that fits, of 1"}

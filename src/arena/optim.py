@@ -23,6 +23,8 @@ class Replay(NamedTuple):
     final_hash: int
     ticks: int
     points: tuple[int, int]  # (candidate, opponent)
+    hold_a: int = 1  # the hold each side played with (kernel version 3); 1 acts every tick
+    hold_b: int = 1
 
 
 class EvalResult(NamedTuple):
