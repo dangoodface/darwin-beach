@@ -5,14 +5,15 @@ import { drawCourt, type CourtColours } from "./court.ts";
 
 type Side = { id: string; label: string; kind: "bot" | "coach" };
 type Match = {
-  act: 1 | 2 | 3 | 4; title: string; caption: string; left: Side; right: Side;
+  act: 1 | 2 | 3 | 4 | 5; title: string; caption: string; left: Side; right: Side;
   seed: string; ticks: number; hash: string; points: [number, number]; from?: number;
+  board?: { rank: number; label: string; rating: number }[];
 };
 type Gallery = { kernel: string; matches: Match[]; brains: Record<string, string> };
 
 const TICK_MS = 1000 / 30;
 const MAX_TICKS = 3000;
-const ACTS = { 1: "LEARNING", 2: "FUNSIES", 3: "THE BEST", 4: "THE SPECIALISTS" } as const;
+const ACTS = { 1: "LEARNING", 2: "FUNSIES", 3: "THE BEST", 4: "THE SPECIALISTS", 5: "THE DEFINITIVE PLAYER?" } as const;
 
 const $ = (id: string) => document.getElementById(id)!;
 const bytes = (b64: string) => Uint8Array.from(atob(b64.trim()), (c) => c.charCodeAt(0));
@@ -58,6 +59,16 @@ function load(i: number) {
   $("m-act").textContent = `ACT ${m.act} · ${ACTS[m.act]} · MATCH ${i + 1} OF ${data.matches.length}`;
   $("m-title").textContent = m.title;
   $("m-caption").textContent = m.caption;
+  const b = $("m-board");
+  b.hidden = !m.board;
+  b.replaceChildren(...(m.board ?? []).map((e) => {
+    const li = document.createElement("li");
+    li.dataset.kind = e.label === "the coach" ? "coach" : e.label.startsWith("run 6") ? "new" : "";
+    li.append(Object.assign(document.createElement("span"), { textContent: String(e.rank) }),
+      Object.assign(document.createElement("span"), { textContent: e.label }),
+      Object.assign(document.createElement("span"), { textContent: String(e.rating) }));
+    return li;
+  }));
   verdict("playing", m.from ? `Live on the real engine. Skipped to second ${Math.round(m.from / 30)}, the moment that matters.` : "Live on the real engine, the same one that trained these bots.");
   $("pause").textContent = "Pause";
   document.querySelectorAll<HTMLButtonElement>("#list button").forEach((b, j) => b.setAttribute("aria-current", String(j === i)));

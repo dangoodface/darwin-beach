@@ -34,6 +34,11 @@
   #m-act { margin: 0; }
   #m-title { font-family: var(--display); font-weight: 400; font-size: clamp(14px, 2.4vw, 20px); color: var(--sun); margin: 0; text-wrap: balance; line-height: 1.4; }
   #m-caption { margin: 0; max-width: 65ch; }
+  #m-board { list-style: none; margin: 0; padding: 0; gap: 0; max-width: 65ch; max-height: 260px; overflow-y: auto; border: 1px solid var(--rule); font-size: 12px; }
+  #m-board li { display: grid; grid-template-columns: 3ch 1fr auto; gap: 10px; padding: 3px 10px; border-bottom: 1px solid var(--rule); color: var(--muted); }
+  #m-board li:first-child { color: var(--sun); }
+  #m-board li[data-kind="new"] { color: var(--slime); }
+  #m-board li[data-kind="coach"] { color: var(--ink); }
   #verdict { font-size: 13px; padding: 8px 10px; border-left: 3px solid var(--rule); background: var(--night-2); color: var(--muted); overflow-wrap: anywhere; }
   #verdict[data-kind="ok"] { border-color: var(--slime); color: var(--ink); }
   #verdict[data-kind="ok"]::before { content: "\2713  "; color: var(--slime); font-weight: 700; }
@@ -80,6 +85,7 @@
       <p class="act" id="m-act"></p>
       <h2 id="m-title">Loading the engine&hellip;</h2>
       <p id="m-caption"></p>
+      <ol id="m-board" hidden aria-label="Elo leaderboard, all 30 bots, held-out serves"></ol>
       <div id="verdict" data-kind="playing" aria-live="polite"></div>
     </section>
     <nav aria-label="Matches"><ol id="list"></ol></nav>
