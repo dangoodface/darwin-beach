@@ -60,7 +60,8 @@ local dev server at `/`. No subdomain and no r2.dev address.
      "desc": [0.19, 0.86, 3.5, 5.2, 37.1, 14.0, 160.2, 3.0],
      "bd": [0.19, 0.86], "gen": 388, "era": 0,
      "replay": {"seed": 123456789, "opponent_id": "…", "side": "A",
-                "final_hash": "0x…", "ticks": 2210, "points": [5, 3]}}
+                "final_hash": "0x…", "ticks": 2210, "points": [5, 3],
+                "hold_a": 1, "hold_b": 1}}
   ],
   "stats": {"filled": 212, "lit": 97, "beats_coach": 3, "qd_score": 311.2, "champion_id": "…",
             "champion_rating": 1234.0, "matches_total": 1880000,
@@ -119,7 +120,11 @@ Decided 27 October 2026 after the first real run filled 400 of 400 in eight
 seconds and took minutes to light them. Rating is
 Elo against the frozen anchors (v1; null in v0). `replay` is the match the
 page re-runs: kernel, seed, this cell's genome on `side`, the opponent on
-the other side; `points` is `[for this cell's genome, against]`.
+the other side; `points` is `[for this cell's genome, against]`. `hold_a`
+and `hold_b` are the holds the match was played with, side A and side B
+(kernel version 3; docs/ABI.md): replay it with `set_holds(hold_a, hold_b)`
+and `held_action`. Both are always present, 1 for a side that acts every tick
+and for every run made before holds existed.
 `opponent_id` is a probe genome id with its own `.bin`, or `scripted-v1`,
 which means the kernel's scripted bot (`scripted_slot()`, no genome file).
 The page shows a verified tick when `BigInt.asUintN(64, state_hash())`
@@ -267,6 +272,7 @@ Files, under `$ARENA_DATA/specialists/<run_id>/` with `run_id = <UTC start>-spec
   "constraint": {"kind": "pinned_output" | "descriptor_window" | "fitness" | "none", "detail": ...},
   "start": {"genome_id", "run_id", "cell": [i, j] | null, "reason"},
   "rivals": [{"id", "kind": "champion" | "coach"}],           // the coach's id is "scripted-v1" (no genome file)
+  "hold": 1,                                                  // the specialist's action hold (kernel v3); rivals play at 1
   "seeds": {"train": {"per_generation": 8, "resampled": ...}, "graded": [u64 ...], "fresh": [u64 ...]},
   "generations", "matches_total", "elapsed_s", "kernel_sha", "kernel_version",
   "final": {"genome_id",
@@ -275,14 +281,17 @@ Files, under `$ARENA_DATA/specialists/<run_id>/` with `run_id = <UTC start>-spec
             "descriptors_fresh_mean": {name: value},         // the genome's own side, over all fresh matches
             "constraint_satisfied": bool,
             "proof": {...},
-            "showcase": [{"seed", "side": "A" | "B", "rival_id", "margin", "descriptors": {name: value}}]},
+            "showcase": [{"seed", "side": "A" | "B", "rival_id", "margin", "hold_a", "hold_b",
+                          "descriptors": {name: value}}]},
   "curve": [{"gen", "t", "fitness_best", "fitness_mean", "margin_by_rival": {rival_id: m}, "constraint_penalty"}] }
 ```
 
 Seeds are u64: a decimal string when above 2^53, as in `latest.json`. `won` counts matches with more points for the
 genome than against; "beats the coach" is won above half of n, the page's rule. The fresh seeds are never used in training or
 for the running best. `margin` is points for minus against, mean over the matches. `showcase` lists the two fresh matches
-with the best margin per rival; `side` is the specialist's side, and its `descriptors` are that side's.
+with the best margin per rival; `side` is the specialist's side, and its `descriptors` are that side's. `hold_a` and
+`hold_b` are the holds of sides A and B in that match: the specialist's hold on its side (9 for Smooth Operator), 1 on
+the rival's, both present and 1 for every specialist without a hold.
 
 `constraint.kind`: `pinned_output` (flat_earther: the jump output's weights are zeroed and its bias is -1, so the button never
 fires; kangaroo: bias +1, always pressed), `descriptor_window` (long_ball, lob_artist, joga_bonito: bounds on the mean

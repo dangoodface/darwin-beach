@@ -270,7 +270,8 @@ def export_run(
             "replay": {"seed": _json_seed(e["replay_seed"]), "opponent_id": e["replay_opponent_id"],
                        "side": e["replay_side"], "final_hash": e["replay_final_hash"],
                        "ticks": e["replay_ticks"],
-                       "points": [e["replay_points_for"], e["replay_points_against"]]},
+                       "points": [e["replay_points_for"], e["replay_points_against"]],
+                       "hold_a": e["replay_hold_a"] or 1, "hold_b": e["replay_hold_b"] or 1},
         })
     events = store.events(run_id)
     coach = coach_curve(events, by_id, json.loads(run["probe_ids_json"]))
