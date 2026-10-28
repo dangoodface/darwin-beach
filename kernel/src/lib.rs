@@ -13,6 +13,7 @@
 pub mod descriptors;
 pub mod hash;
 pub mod juggle;
+pub mod oracle;
 pub mod physics;
 pub mod policy;
 pub mod rng;
@@ -32,6 +33,8 @@ pub const TABLE_CAPACITY: usize = 1024;
 pub const BATCH_CAPACITY: usize = 256;
 /// The table slot that means "the scripted anchor bot" in jobs and calls.
 pub const SCRIPTED_SLOT: u32 = 0xFFFF_FFFF;
+/// Exploration (plan B4): slot `ORACLE_SLOT_BASE + i` plays the oracle's rung i.
+pub const ORACLE_SLOT_BASE: u32 = 0xFFFF_FF00;
 pub const STATE_LEN: usize = 17;
 
 pub const FLAG_MAX_TICKS: u32 = 2;
@@ -123,22 +126,33 @@ static LAST_ACTIONS: Shared<[u32; 2]> = Shared::new([0, 0]);
 enum Controller {
     Net(Net),
     Scripted,
+    Oracle(oracle::Oracle),
 }
 
 impl Controller {
-    fn from_slot(table: &[f32], slot: u32) -> Option<Controller> {
+    /// `seed` and `side` seed the oracle's own generator; a genome or the scripted
+    /// bot ignores them.
+    fn from_slot(table: &[f32], slot: u32, seed: u64, side: u32) -> Option<Controller> {
         if slot == SCRIPTED_SLOT {
             return Some(Controller::Scripted);
+        }
+        if (ORACLE_SLOT_BASE..ORACLE_SLOT_BASE + oracle::RUNGS.len() as u32).contains(&slot) {
+            return Some(Controller::Oracle(oracle::Oracle::new(
+                (slot - ORACLE_SLOT_BASE) as usize,
+                seed,
+                side,
+            )));
         }
         let start = (slot as usize).checked_mul(GENOME_LEN)?;
         let params = table.get(start..start + GENOME_LEN)?;
         Some(Controller::Net(upcast(params)))
     }
 
-    fn action(&self, obs: &[f64; 12]) -> u32 {
+    fn action(&mut self, obs: &[f64; 12]) -> u32 {
         match self {
             Controller::Net(w) => net_action(w, obs),
             Controller::Scripted => scripted::scripted_action(obs),
+            Controller::Oracle(o) => o.action(obs),
         }
     }
 }
@@ -157,9 +171,9 @@ pub fn run_match(
     mut tick_hashes: Option<&mut [u64]>,
     out: &mut MatchResult,
 ) -> u32 {
-    let (Some(side_a), Some(side_b)) = (
-        Controller::from_slot(table, a),
-        Controller::from_slot(table, b),
+    let (Some(mut side_a), Some(mut side_b)) = (
+        Controller::from_slot(table, a, seed, 0),
+        Controller::from_slot(table, b, seed, 1),
     ) else {
         *out = MatchResult::BAD_JOB;
         return 0;
@@ -248,6 +262,28 @@ pub extern "C" fn batch_capacity() -> u32 {
 #[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
 pub extern "C" fn job_bytes() -> u32 {
     core::mem::size_of::<Job>() as u32
+}
+
+/// The first oracle slot and how many rungs follow it (exploration, plan B4).
+#[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
+pub extern "C" fn oracle_slot_base() -> u32 {
+    ORACLE_SLOT_BASE
+}
+
+#[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
+pub extern "C" fn oracle_rungs() -> u32 {
+    oracle::RUNGS.len() as u32
+}
+
+/// Rung `i`'s perception delay in ticks, and its aim noise (0 past the last rung).
+#[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
+pub extern "C" fn oracle_rung_delay(i: u32) -> u32 {
+    oracle::RUNGS.get(i as usize).map_or(0, |r| r.delay)
+}
+
+#[cfg_attr(target_arch = "wasm32", unsafe(no_mangle))]
+pub extern "C" fn oracle_rung_noise(i: u32) -> f64 {
+    oracle::RUNGS.get(i as usize).map_or(0.0, |r| r.noise)
 }
 
 /// Descriptors per side in a result block: 11 since version 3, 10 in version 2. A
@@ -400,8 +436,9 @@ pub extern "C" fn policy_action(side: u32, slot: u32) -> u32 {
         1 => &game.b.obs,
         _ => return u32::MAX,
     };
-    match Controller::from_slot(genome_table(), slot) {
-        Some(controller) => controller.action(obs),
+    // An oracle here is built fresh for the call, so it plays without its delay.
+    match Controller::from_slot(genome_table(), slot, 0, side) {
+        Some(mut controller) => controller.action(obs),
         None => u32::MAX,
     }
 }
@@ -418,7 +455,7 @@ pub extern "C" fn held_action(side: u32, slot: u32) -> u32 {
     }
     if game.tick.is_multiple_of(holds[side as usize]) {
         policy_action(side, slot)
-    } else if Controller::from_slot(genome_table(), slot).is_some() {
+    } else if Controller::from_slot(genome_table(), slot, 0, side).is_some() {
         last[side as usize]
     } else {
         u32::MAX

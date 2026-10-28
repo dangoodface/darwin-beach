@@ -57,6 +57,7 @@ class Workers:
         self.count, self.jobs_per_task = max(1, count), jobs_per_task
         self._pool = None
         self._local: Simulator | None = None
+        self._bots: dict[str, int] | None = None
         if self.count > 1:
             # spawn, not fork: the simulator may hold a wasmtime store that must not be shared
             self._pool = mp.get_context("spawn").Pool(self.count, _init, (kind, kernel_path))
@@ -68,6 +69,16 @@ class Workers:
         """Read from a local instance."""
         sim = self._local or make_simulator(self.kind, self.kernel_path)
         return SimInfo(sim.kernel_sha, sim.kernel_version, sim.genome_len, getattr(sim, "scripted_slot", None))
+
+    @property
+    def bots(self) -> dict[str, int]:
+        """The scripted bots the simulator plays, by id: SCRIPTED_ID (at simulator_info's
+        scripted_slot) and, on an oracle build, oracle-v1-rung0 and up. Read once from a
+        local instance; a fresh dict each time."""
+        if self._bots is None:
+            sim = self._local or make_simulator(self.kind, self.kernel_path)
+            self._bots = dict(sim.bots)
+        return dict(self._bots)
 
     def play(self, table: np.ndarray, jobs: list[Job], max_ticks: int = 3000) -> list[MatchResult]:
         """Play `jobs` against `table` (slot i = row i); results in job order."""

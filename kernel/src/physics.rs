@@ -198,6 +198,32 @@ impl Particle {
         self.vy = uy + p.vy;
     }
 
+    /// The first half of a tick of the ball's flight as `Game::step` plays it once
+    /// the serve delay is over: gravity, the speed limit and the move. With `touch`,
+    /// the oracle's crystal ball; it never touches a game.
+    pub fn fly(&mut self) {
+        self.apply_acceleration(0.0, GRAVITY);
+        self.limit_speed(0.0, MAX_BALL_SPEED);
+        self.move_();
+    }
+
+    /// The second half: a bounce off `slime` (if any, the only player on the court),
+    /// off the fence stub, then the edges. Returns `check_edges`' landing side and
+    /// whether the ball bounced off `slime`.
+    pub fn touch(&mut self, slime: Option<&Body>, stub: &Body) -> (i32, bool) {
+        let mut hit = false;
+        if let Some(s) = slime
+            && self.is_colliding(s)
+        {
+            self.bounce(s);
+            hit = true;
+        }
+        if self.is_colliding(stub) {
+            self.bounce(stub);
+        }
+        (self.check_edges(), hit)
+    }
+
     fn limit_speed(&mut self, min_speed: f64, max_speed: f64) {
         let mag2 = self.vx * self.vx + self.vy * self.vy;
         if mag2 > (max_speed * max_speed) {

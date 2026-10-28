@@ -27,6 +27,12 @@ def descriptor_names(kernel_version: int) -> tuple[str, ...]:
 MASK64 = (1 << 64) - 1
 SCRIPTED_SLOT = 0xFFFFFFFF  # ABI: this slot index means the kernel's scripted bot
 SCRIPTED_ID = "scripted-v1"  # its id in our files; there is no genome file for it
+ORACLE_SLOT_BASE = 0xFFFFFF00  # oracle builds (plan B4): slot ORACLE_SLOT_BASE + i plays rung i
+
+
+def oracle_id(rung: int) -> str:
+    """An oracle rung's id in our files, like SCRIPTED_ID: no genome file, a slot in `bots`."""
+    return f"oracle-v1-rung{rung}"
 
 
 class MatchResult(NamedTuple):
@@ -45,6 +51,7 @@ class Simulator(Protocol):
     kernel_sha: str  # hex sha256 of the wasm bytes; FakeSimulator uses "fake-" plus a fixed string
     kernel_version: int
     scripted_slot: int | None  # slot index that plays the scripted bot, or None if the simulator has none
+    bots: dict[str, int]  # the scripted bots it plays, by id: SCRIPTED_ID at scripted_slot, an oracle build's rungs
 
     def load_genomes(self, table: np.ndarray) -> None:
         """Shape (n, genome_len), float32, slot i = row i."""
@@ -96,6 +103,13 @@ class FakeSimulator:
         self._strength = np.zeros(0)
         # a pretend scripted bot: a fixed digest, middling strength, a net-hugging, grounded style
         self._scripted = (_u64(b"fake scripted-v1"), -0.8, np.array([0.8, 0.2, 30.0, 8.0, 12.0, 6.0, 150.0, 0.0]))
+        # a pretend oracle rung: another fixed digest, stronger than the coach, a deeper, airborne style
+        self._oracle = (_u64(b"fake oracle-v1-rung0"), -0.2, np.array([0.5, 0.4, 40.0, 10.0, 15.0, 15.0, 250.0, 0.0]))
+
+    @property
+    def bots(self) -> dict[str, int]:
+        """The coach and one pretend oracle rung, listed as an oracle build lists its bots."""
+        return {SCRIPTED_ID: SCRIPTED_SLOT, oracle_id(0): ORACLE_SLOT_BASE}
 
     def load_genomes(self, table: np.ndarray) -> None:
         table = np.ascontiguousarray(table, dtype=np.float32)
@@ -120,6 +134,8 @@ class FakeSimulator:
     def _slot(self, i: int):
         if i == SCRIPTED_SLOT:
             return self._scripted
+        if i == ORACLE_SLOT_BASE:
+            return self._oracle
         if 0 <= i < len(self._digest):
             return self._digest[i], self._strength[i], self._desc[i]
         return None
