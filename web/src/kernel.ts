@@ -1,7 +1,11 @@
 // The browser's side of the kernel (docs/ABI.md). The same .wasm bytes the
 // trainer ran, so a replay here lands on the trainer's hash or something is wrong.
 
+// A genome is 515 f32 for kernel versions 1 and 2 (12-32-3) and 1,027 from version 3 (12-64-3).
 export const GENOME_LEN = 515;
+export const GENOME_LEN_V3 = 1027;
+const N_IN = 12;
+const N_OUT = 3;
 export const SCRIPTED_SLOT = 0xffffffff;
 
 // Action bits, per side: forward means towards the net.
@@ -21,6 +25,8 @@ type Exports = {
   step(): number;
   is_done(maxTicks: number): number;
   policy_action(side: number, slot: number): number;
+  set_holds?(holdA: number, holdB: number): number;
+  held_action?(side: number, slot: number): number;
   state_hash(): bigint;
 };
 
@@ -35,13 +41,29 @@ export type Snapshot = {
   lastPoint: number;
 };
 
+// A 515-parameter genome in the 1,027 layout (docs/ABI.md, "Padding a version 2 genome"):
+// each block keeps its values first and gains zeros for hidden units 32 to 63, so it plays the same match.
+export function padGenome(v2: Float32Array): Float32Array<ArrayBuffer> {
+  const old = 32;
+  const hid = 64;
+  const out = new Float32Array(GENOME_LEN_V3);
+  out.set(v2.subarray(0, old * N_IN), 0);
+  out.set(v2.subarray(old * N_IN, old * N_IN + old), hid * N_IN);
+  const w2 = old * N_IN + old;
+  for (let r = 0; r < N_OUT; r++) out.set(v2.subarray(w2 + r * old, w2 + (r + 1) * old), hid * N_IN + hid + r * hid);
+  out.set(v2.subarray(w2 + N_OUT * old), hid * N_IN + hid + N_OUT * hid);
+  return out;
+}
+
 export class Kernel {
   readonly k: Exports;
+  readonly genomeLen: number;
   private slots = new Map<string, number>();
 
   private constructor(k: Exports) {
     this.k = k;
-    if (k.genome_len() !== GENOME_LEN) throw new Error(`kernel genome_len ${k.genome_len()}`);
+    this.genomeLen = k.genome_len();
+    if (this.genomeLen !== GENOME_LEN && this.genomeLen !== GENOME_LEN_V3) throw new Error(`kernel genome_len ${this.genomeLen}`);
   }
 
   static async load(bytes: BufferSource): Promise<Kernel> {
@@ -53,26 +75,32 @@ export class Kernel {
     return this.k.kernel_version();
   }
 
-  // Copies a genome's 515 little-endian f32 into the next free table slot and returns the slot.
-  // The same genome id always gets the same slot.
+  // Copies a genome's little-endian f32 into the next free table slot and returns the slot.
+  // A 515-parameter genome on a version 3 kernel is padded first. The same genome id always gets the same slot.
   loadGenome(id: string, bytes: ArrayBuffer): number {
     const have = this.slots.get(id);
     if (have !== undefined) return have;
-    if (bytes.byteLength !== GENOME_LEN * 4) throw new Error(`genome ${id} is ${bytes.byteLength} bytes`);
+    let f: Float32Array = new Float32Array(bytes.slice(0));
+    if (f.length === GENOME_LEN && this.genomeLen === GENOME_LEN_V3) f = padGenome(f);
+    if (f.length !== this.genomeLen) throw new Error(`genome ${id} is ${bytes.byteLength} bytes`);
     const slot = this.slots.size;
     if (slot >= this.k.table_capacity()) throw new Error("genome table full");
-    new Uint8Array(this.k.memory.buffer).set(new Uint8Array(bytes), this.k.genome_table_ptr() + slot * GENOME_LEN * 4);
+    new Float32Array(this.k.memory.buffer, this.k.genome_table_ptr() + slot * this.genomeLen * 4, this.genomeLen).set(f);
     this.slots.set(id, slot);
     return slot;
   }
 
-  reset(seed: bigint): void {
+  // Holds (version 3): a side with hold h picks a new action every h ticks and repeats it in between.
+  reset(seed: bigint, holdA = 1, holdB = 1): void {
     this.k.reset(seed);
+    if (this.k.set_holds) {
+      if (this.k.set_holds(holdA, holdB) !== 1) throw new Error(`bad holds ${holdA}, ${holdB}`);
+    } else if (holdA !== 1 || holdB !== 1) throw new Error(`kernel version ${this.version} has no holds`);
   }
 
-  // The action a genome (or the scripted bot) takes now for a side: 0 is left (A), 1 is right (B).
+  // The action a genome (or the scripted bot) takes now for a side, under its hold: 0 is left (A), 1 is right (B).
   policy(side: 0 | 1, slot: number): number {
-    const act = this.k.policy_action(side, slot);
+    const act = this.k.held_action ? this.k.held_action(side, slot) : this.k.policy_action(side, slot);
     if (act < 0) throw new Error(`policy_action refused slot ${slot}`);
     return act;
   }
@@ -108,8 +136,8 @@ export class Kernel {
 
 // A whole match the way the trainer's Kernel.replay plays it, without drawing.
 // Used by the tests and by the "verify all" check.
-export function replayHeadless(k: Kernel, seed: bigint, left: number, right: number, maxTicks = 3000) {
-  k.reset(seed);
+export function replayHeadless(k: Kernel, seed: bigint, left: number, right: number, maxTicks = 3000, holdA = 1, holdB = 1) {
+  k.reset(seed, holdA, holdB);
   let pointsLeft = 0;
   let pointsRight = 0;
   while (!k.done(maxTicks)) {
