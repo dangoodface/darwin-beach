@@ -2,7 +2,7 @@
 // Usage: node tools/gallery/build.mjs --data gallery.json --out replays.html [--standalone https://site]
 // Without --standalone the file is an Artifact body (the host adds the document around it);
 // with it, a whole document with the share-card tags, for hosting at that address.
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, copyFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { buildSync } from "esbuild";
 
@@ -37,4 +37,10 @@ const html = site
   ? `<!doctype html>\n<html lang="en">\n<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n${head.replace(/<meta name="claude:[^>]*>\n/, "")}${card}\n</head>\n<body>\n${body}</body>\n</html>\n`
   : head + body;
 writeFileSync(args.out ?? "replays.html", html);
+// The hall of fame's server replays wins: it needs each rival's brain and rating, and the same kernel bytes.
+if (site) {
+  const rivals = Object.fromEntries(data.arcade.map((r) => [r.id, { label: r.label, rating: r.rating, kind: r.kind, ...(r.kind === "coach" ? {} : { b64: data.brains[r.id] }) }]));
+  writeFileSync(join(dirname(args.out), "rivals.json"), JSON.stringify(rivals));
+}
+if (args["kernel-out"]) copyFileSync(data.kernel, args["kernel-out"]);
 console.log(`wrote ${args.out ?? "replays.html"}: ${(html.length / 1024).toFixed(0)} KB, ${data.matches.length} matches`);

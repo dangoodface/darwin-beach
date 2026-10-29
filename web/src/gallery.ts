@@ -88,7 +88,7 @@ function padLights() {
 function controls() {
   const zone = $("zone");
   const pad = document.querySelector<HTMLElement>(".pad")!;
-  const onButton = (e: Event) => !!(e.target as Element).closest?.("button");
+  const onButton = (e: Event) => !!(e.target as Element).closest?.("button, input, label, form");
   pad.addEventListener("pointerdown", (e) => {
     if (!live()) return;
     e.preventDefault();
@@ -107,6 +107,7 @@ function controls() {
 
   const GAME_KEYS = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "];
   window.addEventListener("keydown", (e) => {
+    if (e.target instanceof HTMLInputElement) return;
     if (live() && GAME_KEYS.includes(e.key)) e.preventDefault();
     if (mode !== "preview" && e.key === "Escape") return preview(rival);
     if (mode === "over" && e.key === "Enter") return start();
@@ -160,7 +161,9 @@ function start() {
   setMode("countdown");
   fingers.clear(); keys.clear();
   gRight = slotIn(game, rival);
-  game.reset(freshSeed());
+  gSeed = freshSeed();
+  game.reset(gSeed);
+  gActs = [];
   gPts = [0, 0]; gTick = 0; gAcc = 0;
   countEnd = performance.now() + 3000; countShown = 0;
   $("preview-tag").textContent = "";
@@ -169,8 +172,13 @@ function start() {
   drawGame();
 }
 
+// The viewer's match is kept as its serve and every action pressed, so the server can replay a win.
+let gSeed = 0n;
+let gActs: number[] = [];
+
 function stepGame() {
   const a = mode === "play" ? humanAction() : game.policy(0, gLeft);
+  if (mode === "play") gActs.push(a);
   const won = game.step(a, game.policy(1, gRight));
   gTick++;
   if (won > 0) gPts[0]++;
@@ -190,7 +198,65 @@ function over() {
   save();
   showYou();
   overlay("over", s === 1 ? "YOU WIN" : s === 0 ? "YOU LOSE" : "DRAW");
+  fameOffer(s === 1 && rival.rating >= FAME_MIN);
   $("result").textContent = (s === 1 ? `You beat ${rival.label} ${a} - ${b}. Evolution has work to do.` : s === 0 ? `${rival.label} wins ${b} - ${a}.` : `${a} - ${b} when the clock ran out.`) + ` Your Elo: ${yourElo(results)}.`;
+}
+
+// ---- the hall of fame: wins against the coach or higher, replayed by the server before they count
+const FAME_MIN = 1000;
+const FAME_API = "api/fame";
+let fameLive = false;
+
+function fameRender(entries: { name: string; label: string; rating: number; you: number; bot: number; created: number }[]) {
+  const ol = $("fame-list");
+  ol.replaceChildren(...entries.map((e, i) => {
+    const li = document.createElement("li");
+    const when = new Date(e.created).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    li.append(
+      Object.assign(document.createElement("span"), { className: "rk", textContent: String(i + 1) }),
+      Object.assign(document.createElement("span"), { className: "nm", textContent: e.name }),
+      Object.assign(document.createElement("span"), { className: "bt", textContent: `beat ${e.label} (${e.rating}) ${e.you}-${e.bot}` }),
+      Object.assign(document.createElement("span"), { className: "dt", textContent: when }));
+    return li;
+  }));
+}
+
+async function fameLoad() {
+  try {
+    const r = await fetch(FAME_API, { cache: "no-store" });
+    if (!r.ok) throw new Error(String(r.status));
+    fameRender((await r.json()).entries);
+    fameLive = true;
+    $("fame").hidden = false;
+  } catch { fameLive = false; $("fame").hidden = true; }
+}
+
+function fameOffer(earned: boolean) {
+  const f = $("fame-form") as HTMLFormElement;
+  f.hidden = !(earned && fameLive);
+  $("fame-msg").textContent = "";
+  ($("fame-submit") as HTMLButtonElement).disabled = false;
+}
+
+async function fameSubmit(e: Event) {
+  e.preventDefault();
+  const input = $("fame-name") as HTMLInputElement, btn = $("fame-submit") as HTMLButtonElement, msg = $("fame-msg");
+  const name = input.value.trim();
+  if (!name) { msg.textContent = "Type a name or apodo first."; return; }
+  btn.disabled = true;
+  msg.textContent = "Replaying your match on the server\u2026";
+  let bin = "";
+  for (const a of gActs) bin += String.fromCharCode(a);
+  try {
+    const r = await fetch(FAME_API, { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name, rival: rival.id, seed: gSeed.toString(), actions: btoa(bin) }) });
+    const d = await r.json();
+    if (!r.ok) { msg.textContent = d.error ?? "That didn't work. Try again."; btn.disabled = false; return; }
+    try { localStorage.setItem("darwin-beach-name", name); } catch { /* fine */ }
+    fameRender(d.entries);
+    ($("fame-form") as HTMLFormElement).hidden = true;
+    $("result").textContent += ` Verified on the real engine: you're #${d.rank} in the Hall of Fame.`;
+  } catch { msg.textContent = "No connection. Try again."; btn.disabled = false; }
 }
 
 async function share() {
@@ -471,6 +537,9 @@ async function main() {
   }
   controls();
   rivals();
+  ($("fame-form") as HTMLFormElement).addEventListener("submit", fameSubmit);
+  try { ($("fame-name") as HTMLInputElement).value = localStorage.getItem("darwin-beach-name") ?? ""; } catch { /* private window */ }
+  fameLoad();
   preview(data.arcade.find((r) => r.kind === "coach") ?? data.arcade[0]);
   if (data.lab) {
     try {

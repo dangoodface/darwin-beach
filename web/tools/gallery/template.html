@@ -135,6 +135,19 @@
   #rivals .elo { color: var(--sun); font-variant-numeric: tabular-nums; font-weight: 700; }
   #rivals button[aria-pressed="true"] { border-color: var(--slime); background: rgba(57, 255, 159, 0.12); }
   #rivals button[aria-pressed="true"] .who { color: var(--slime); }
+  .fame { display: grid; gap: 8px; border: 1px solid var(--rule); background: var(--night-2); padding: 14px; }
+  .fame-sub { margin: 0; font-size: 12px; color: var(--muted); }
+  #fame-list { list-style: none; margin: 0; padding: 0; display: grid; }
+  #fame-list li { display: grid; grid-template-columns: 2.5ch minmax(0, 1fr) auto; column-gap: 10px; padding: 6px 0; border-top: 1px solid var(--rule); font-size: 13px; }
+  #fame-list .rk { grid-area: 1 / 1 / 3 / 2; color: var(--sun); font-weight: 700; }
+  #fame-list .nm { grid-area: 1 / 2; font-weight: 700; color: var(--ink); overflow-wrap: anywhere; }
+  #fame-list .dt { grid-area: 1 / 3; color: var(--muted); font-size: 11px; text-align: right; }
+  #fame-list .bt { grid-area: 2 / 2 / 3 / 4; color: var(--muted); font-size: 12px; }
+  #fame-list li:first-child .nm { color: var(--sun); }
+  #fame-form { display: grid; gap: 8px; justify-items: center; }
+  #fame-form label { font-weight: 700; color: var(--sun); }
+  #fame-form input { font: 500 16px var(--body); color: var(--ink); background: var(--night-2); border: 1px solid var(--slime); padding: 10px 12px; min-height: 44px; width: min(240px, 60vw); user-select: text; -webkit-user-select: text; touch-action: auto; }
+  #fame-msg { margin: 0; font-size: 12px; color: var(--muted); }
   .more { margin: 6px 0 0; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
   #note { margin: 0; color: var(--muted); max-width: 65ch; }
   .you { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
@@ -274,13 +287,19 @@
         <div id="pad-j">JUMP</div>
       </div>
       <div class="keys"><span><kbd>&larr;</kbd> <kbd>&rarr;</kbd> move</span><span><kbd>&uarr;</kbd> or <kbd>space</kbd> jump</span><span><kbd>esc</kbd> quit</span><span>You are green. First to 5.</span></div>
-      <div class="after"><p id="result"></p><div class="row"><button type="button" id="share">Share my score</button><button type="button" id="pick-another">Pick another rival</button></div></div>
+      <div class="after"><p id="result"></p>
+        <form id="fame-form" hidden><label for="fame-name">&#127942; You made the Hall of Fame. Your name or apodo:</label><div class="row"><input id="fame-name" maxlength="20" autocomplete="nickname" enterkeyhint="done" required><button type="submit" class="primary" id="fame-submit">Add me</button></div><p id="fame-msg" aria-live="polite"></p></form><div class="row"><button type="button" id="share">Share my score</button><button type="button" id="pick-another">Pick another rival</button></div></div>
     </div>
     <div class="pick">
       <p class="kicker">PICK YOUR RIVAL <span class="swipe">swipe for harder ones</span></p>
       <div id="rivals" role="group" aria-label="Rivals, easiest first"></div>
       <p id="note"></p>
       <div class="you"><p id="you"></p><button type="button" id="you-reset" hidden>reset</button></div>
+      <section class="fame" id="fame" hidden aria-labelledby="fame-h">
+        <p class="kicker" id="fame-h">&#127942; HALL OF FAME</p>
+        <p class="fame-sub">Beat the coach or anyone above it and your name goes here. The server replays your match on the same engine first, so every win is real.</p>
+        <ol id="fame-list"></ol>
+      </section>
     </div>
   </section>
   </div>
