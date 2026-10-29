@@ -2,6 +2,7 @@
 // Two engines run the same bytes: one for the viewer's games, one for the stored replays.
 import { Kernel, SCRIPTED_SLOT, FORWARD, BACKWARD, JUMP } from "./kernel.ts";
 import { drawCourt, type CourtColours } from "./court.ts";
+import { initLab, type LabData } from "./lab.ts";
 
 type Side = { id: string; label: string; kind: "bot" | "coach" };
 type Match = {
@@ -13,7 +14,7 @@ type Match = {
 // A rated bot the viewer can play; every result moves the viewer's own Elo on the official scale.
 type Rival = { id: string; label: string; kind: "bot" | "coach"; rating: number; note: string };
 type Facts = { matches: number; boss?: number };
-type Gallery = { kernel: string; matches: Match[]; brains: Record<string, string>; arcade: Rival[]; facts?: Facts };
+type Gallery = { kernel: string; matches: Match[]; brains: Record<string, string>; arcade: Rival[]; facts?: Facts; lab?: LabData };
 
 const TICK_MS = 1000 / 30;
 const MAX_TICKS = 3000;
@@ -35,6 +36,7 @@ const filmCtx = ($("film") as HTMLCanvasElement).getContext("2d")!;
 
 let game: Kernel;
 let theatre: Kernel;
+let labApi: { setYou(elo: number | null): void } | null = null;
 const slotIn = (k: Kernel, s: { id: string; kind: string }) => (s.kind === "coach" ? SCRIPTED_SLOT : k.loadGenome(s.id, bytes(data.brains[s.id]).buffer));
 let last = 0;
 // Names and score stay readable when a phone shrinks the court.
@@ -210,18 +212,26 @@ try { results = JSON.parse(localStorage.getItem(STORE) ?? "[]"); } catch { resul
 const save = () => { try { localStorage.setItem(STORE, JSON.stringify(results)); } catch { /* private window: this visit only */ } };
 
 // The rating that makes the viewer's expected score equal the real one, the bots' ratings held fixed.
-function yourElo(rs: Result[]) {
+// With no loss or no win yet the number is only a bound; the lab's ladder then places the viewer at it.
+function eloNumber(rs: Result[]): number | null {
   const got = rs.reduce((a, x) => a + x.s, 0);
-  if (!rs.length) return "unrated";
-  if (got === 0) return `below ${Math.min(...rs.map((x) => x.r))}`;
-  if (got === rs.length) return `above ${Math.max(...rs.map((x) => x.r))}`;
+  if (!rs.length) return null;
+  if (got === 0) return Math.min(...rs.map((x) => x.r)) - 100;
+  if (got === rs.length) return Math.max(...rs.map((x) => x.r)) + 100;
   let lo = -1000, hi = 4000;
   for (let i = 0; i < 60; i++) {
     const mid = (lo + hi) / 2;
     const e = rs.reduce((a, x) => a + 1 / (1 + 10 ** ((x.r - mid) / 400)), 0);
     if (e < got) lo = mid; else hi = mid;
   }
-  return `about ${Math.round((lo + hi) / 2)}`;
+  return (lo + hi) / 2;
+}
+function yourElo(rs: Result[]) {
+  const got = rs.reduce((a, x) => a + x.s, 0);
+  if (!rs.length) return "unrated";
+  if (got === 0) return `below ${Math.min(...rs.map((x) => x.r))}`;
+  if (got === rs.length) return `above ${Math.max(...rs.map((x) => x.r))}`;
+  return `about ${Math.round(eloNumber(rs)!)}`;
 }
 
 function showYou() {
@@ -230,6 +240,7 @@ function showYou() {
     ? `Your Elo: ${yourElo(results)} after ${results.length} match${results.length === 1 ? "" : "es"}, ${w} won. The coach is 1000.`
     : "Your Elo: unrated. Play anyone to get a number. The coach is 1000.";
   $("you-reset").hidden = !results.length;
+  labApi?.setYou(eloNumber(results));
 }
 
 function rivals() {
@@ -238,9 +249,11 @@ function rivals() {
     const b = document.createElement("button");
     b.type = "button";
     b.dataset.id = r.id;
-    b.innerHTML = `<span class="who"></span><span class="elo"></span>`;
+    b.innerHTML = `<span class="who"></span><span class="elo"></span><span class="tier"></span>`;
+    b.dataset.tier = r.rating < 1000 ? "easy" : r.rating < 1900 ? "medium" : "hard";
     b.querySelector(".who")!.textContent = r.label;
     b.querySelector(".elo")!.textContent = `Elo ${r.rating}`;
+    b.querySelector(".tier")!.textContent = r.rating < 1000 ? "WARM-UP" : r.rating < 1900 ? "A REAL GAME" : "GOOD LUCK";
     b.addEventListener("click", () => preview(r));
     box.append(b);
   }
@@ -424,16 +437,22 @@ async function main() {
   facts();
   acts();
   tabs();
+  const wasm = bytes($("kernel-b64").textContent!);
   try {
-    const wasm = bytes($("kernel-b64").textContent!);
     [game, theatre] = await Promise.all([Kernel.load(wasm), Kernel.load(wasm)]);
   } catch (e) {
-    $("ov").textContent = `This browser would not start the game engine (${(e as Error).message}).`;
+    $("ov").textContent = `This browser would not start the game engine (${(e as Error).message}). The story and the lab need it too; a current Chrome, Safari or Firefox runs it.`;
     return;
   }
   controls();
   rivals();
   preview(data.arcade.find((r) => r.kind === "coach") ?? data.arcade[0]);
+  if (data.lab) {
+    try {
+      labApi = await initLab({ lab: data.lab, bots: data.arcade.filter((r) => r.kind === "bot"), brains: data.brains, wasm, colours, tabOpen: () => !$("tab-nerds").hidden });
+      labApi.setYou(eloNumber(results));
+    } catch (e) { $("lab-check").textContent = `The lab could not start (${(e as Error).message}).`; }
+  }
 
   const io = new IntersectionObserver((entries) => {
     for (const e of entries) {

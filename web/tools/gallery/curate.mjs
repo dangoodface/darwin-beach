@@ -378,6 +378,30 @@ const arcade = ARCADE.map(([l, label, note]) => {
   return { id, label, kind: "bot", rating: Math.round(e.rating), note };
 }).filter(Boolean).sort((a, b) => a.rating - b.rating);
 
+// ---------- the lab: the league's map, the official ladder, its curve ----------
+// The map's 400 cells as compact rows; six of them carry their genome, so a viewer can watch them think.
+const r7cells = latest.r7.cells;
+const labCells = r7cells.map((c) => [c.i, c.j, Math.round(c.rating ?? 0), +Number(c.fitness ?? 0).toFixed(2), c.gen, c.lit ? 1 : 0]);
+const byRating7 = [...r7cells].filter((c) => c.rating).sort((a, b) => b.rating - a.rating);
+const strongest = (pred) => byRating7.find(pred);
+const playable = {};
+for (const c of [byRating7[0], byRating7[1], byRating7[2], strongest((c) => c.bd[1] < 0.2), strongest((c) => c.bd[1] > 0.85), strongest((c) => c.bd[0] > 0.85)]) {
+  if (!c || playable[`${c.i},${c.j}`]) continue;
+  const b = readFileSync(join(OUT, RUN.r7, "genomes", `${c.genome_id}.bin`));
+  brains[c.genome_id] = b.toString("base64");
+  playable[`${c.i},${c.j}`] = c.genome_id;
+}
+const curve7 = JSON.parse(readFileSync(join(OUT, RUN.r7, "curve.json"), "utf8")).points;
+const every = Math.max(1, Math.floor(curve7.length / 120));
+const labCurve = curve7.filter((p, i) => i % every === 0 || i === curve7.length - 1).map((p) => [p.gen, p.filled, p.lit, p.beats_coach]);
+const labLadder = [{ label: "the coach", rating: 1000, kind: "coach" }, ...ladder.members.map((m) => ({ label: m.label, rating: Math.round(m.rating), kind: m.kind }))];
+const leagueBest = Object.values(offRatings).filter((r) => /^league-top-rating-1/.test(r.label)).at(-1);
+if (leagueBest) labLadder.push({ label: "league, best cell", rating: Math.round(leagueBest.rating), kind: "league" });
+const st7 = latest.r7.stats;
+const lab = { run: RUN.r7, grid: [20, 20], cells: labCells, playable, ladder: labLadder, curve: labCurve,
+  stats: { rounds: latest.r7.generation, matches: st7.matches_total, filled: st7.filled, lit: st7.lit, beatsCoach: st7.beats_coach, perSecond: Math.round(st7.matches_per_s) } };
+console.log("lab", { cells: labCells.length, playable: Object.keys(playable).length, ladder: labLadder.length, curve: labCurve.length });
+
 // ---------- the numbers for the header and the nerds ----------
 const runMatches = [...Object.values(RUN), "20261028T130929Z-run7-league"].map((d) => JSON.parse(readFileSync(join(OUT, d, "latest.json"), "utf8")).stats.matches_total);
 const specMatches = specRuns.map((d) => result(d).matches_total ?? 0);
@@ -390,6 +414,6 @@ console.log("facts", facts);
 
 const args = process.argv.slice(2);
 const out = args[args.indexOf("--out") + 1] ?? "gallery.json";
-const used = Object.fromEntries([...matches.flatMap((m) => [m.left.id, m.right.id]), ...arcade.map((r) => r.id)].filter((id) => id !== COACH).map((id) => [id, brains[id]]));
-writeFileSync(out, JSON.stringify({ kernel: kernelPath, made: new Date().toISOString(), matches, brains: used, arcade, facts }));
+const used = Object.fromEntries([...matches.flatMap((m) => [m.left.id, m.right.id]), ...arcade.map((r) => r.id), ...Object.values(playable)].filter((id) => id !== COACH).map((id) => [id, brains[id]]));
+writeFileSync(out, JSON.stringify({ kernel: kernelPath, made: new Date().toISOString(), matches, brains: used, arcade, facts, lab }));
 console.log(`wrote ${out}: ${matches.length} matches, ${Object.keys(used).length} brains`);
