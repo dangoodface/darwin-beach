@@ -1,5 +1,5 @@
-// The replay gallery: a handful of the night's matches, each stored as a serve (seed)
-// and two brains, played live on the training kernel and checked against its hash.
+// Darwin Beach: play the evolved bots, then watch the story, on the same engine that trained them.
+// Two engines run the same bytes: one for the viewer's games, one for the stored replays.
 import { Kernel, SCRIPTED_SLOT, FORWARD, BACKWARD, JUMP } from "./kernel.ts";
 import { drawCourt, type CourtColours } from "./court.ts";
 
@@ -10,70 +10,275 @@ type Match = {
   holds?: [number, number];
   board?: { rank: number; label: string; rating: number; kind?: string }[];
 };
-// The arcade: the viewer plays a rated bot, and every result moves the viewer's own Elo.
+// A rated bot the viewer can play; every result moves the viewer's own Elo on the official scale.
 type Rival = { id: string; label: string; kind: "bot" | "coach"; rating: number; note: string };
-type Gallery = { kernel: string; matches: Match[]; brains: Record<string, string>; arcade?: Rival[] };
+type Facts = { matches: number; boss?: number };
+type Gallery = { kernel: string; matches: Match[]; brains: Record<string, string>; arcade: Rival[]; facts?: Facts };
 
 const TICK_MS = 1000 / 30;
 const MAX_TICKS = 3000;
+const SITE = "https://play.thegoodface.ai/beach/";
 const ACTS = { 1: "LEARNING", 2: "FUNSIES", 3: "THE BEST", 4: "THE SPECIALISTS", 5: "THE DEFINITIVE PLAYER?", 6: "THE NIGHT SHIFT", 7: "THE LEAGUE" } as const;
 
 const $ = (id: string) => document.getElementById(id)!;
 const bytes = (b64: string) => Uint8Array.from(atob(b64.trim()), (c) => c.charCodeAt(0));
 const css = (v: string) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const freshSeed = () => crypto.getRandomValues(new BigUint64Array(1))[0];
 
 const data: Gallery = JSON.parse($("gallery-data").textContent!);
-const canvas = $("court") as HTMLCanvasElement;
-const ctx = canvas.getContext("2d")!;
 const colours: CourtColours = {
   sky: css("--sea"), sand: css("--sand"), line: css("--foam"), left: css("--slime"), right: css("--rival"),
   ball: css("--sun"), eye: "#ffffff", pupil: css("--night"), text: css("--ink"),
 };
+const courtCtx = ($("court") as HTMLCanvasElement).getContext("2d")!;
+const filmCtx = ($("film") as HTMLCanvasElement).getContext("2d")!;
 
-let k: Kernel;
-let cur = 0;
-let pts: [number, number] = [0, 0];
-let left = 0, right = 0;
-let playing = true, finished = false, speed = 1, acc = 0, last = 0;
-let advanceAt = 0;
-let human: Rival | null = null;
+let game: Kernel;
+let theatre: Kernel;
+const slotIn = (k: Kernel, s: { id: string; kind: string }) => (s.kind === "coach" ? SCRIPTED_SLOT : k.loadGenome(s.id, bytes(data.brains[s.id]).buffer));
+let last = 0;
+// Names and score stay readable when a phone shrinks the court.
+const labelScale = (c: CanvasRenderingContext2D) => Math.min(2, Math.max(1, 560 / (c.canvas.clientWidth || 960)));
+
+// ================= the game =================
+// preview: the chosen rival plays the coach behind the PLAY button; countdown, play, over: the viewer's match.
+type Mode = "preview" | "countdown" | "play" | "over";
+let mode: Mode = "preview";
+let rival: Rival;
+let gLeft = 0, gRight = 0, gTick = 0, gAcc = 0, jumpUntil = -1, countEnd = 0, countShown = 0;
+let gPts: [number, number] = [0, 0];
+let courtVisible = true;
+const live = () => mode === "play" || mode === "countdown";
+
+function setMode(m: Mode) {
+  mode = m;
+  $("play").dataset.mode = m;
+}
+
+// ---- controls: arrow keys on a keyboard; on a phone, hold either half to move, swipe up (or tap a second finger) to jump
 const keys = new Set<string>();
-const pad = { left: false, right: false, jump: false };
-const slot = (s: Side) => (s.kind === "coach" ? SCRIPTED_SLOT : k.loadGenome(s.id, bytes(data.brains[s.id]).buffer));
+const fingers = new Map<number, { side: "l" | "r" | null; low: number }>();
+const SWIPE_PX = 22;
+
+function sideOf(x: number): "l" | "r" {
+  const r = $("zone").getBoundingClientRect();
+  return x < r.left + r.width / 2 ? "l" : "r";
+}
+const holding = (side: "l" | "r") => [...fingers.values()].some((f) => f.side === side);
+function jump() { jumpUntil = gTick + 5; }
 
 // The viewer plays the left slime, so forward (towards the net) is to the right.
 function humanAction(): number {
   let a = 0;
-  if (keys.has("ArrowRight") || keys.has("d") || pad.right) a |= FORWARD;
-  if (keys.has("ArrowLeft") || keys.has("a") || pad.left) a |= BACKWARD;
-  if (keys.has("ArrowUp") || keys.has("w") || keys.has(" ") || pad.jump) a |= JUMP;
+  if (keys.has("ArrowRight") || keys.has("d") || keys.has("D") || holding("r")) a |= FORWARD;
+  if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A") || holding("l")) a |= BACKWARD;
+  if (keys.has("ArrowUp") || keys.has("w") || keys.has("W") || keys.has(" ") || gTick < jumpUntil) a |= JUMP;
   return a;
 }
 
-function tick() {
-  const won = k.step(human ? humanAction() : k.policy(0, left), k.policy(1, right));
-  if (won > 0) pts[0]++;
-  else if (won < 0) pts[1]++;
+function padLights() {
+  $("pad-l").dataset.on = holding("l") ? "1" : "";
+  $("pad-r").dataset.on = holding("r") ? "1" : "";
+  $("pad-j").dataset.on = gTick < jumpUntil ? "1" : "";
 }
 
-function draw() {
+function controls() {
+  const zone = $("zone");
+  const onButton = (e: Event) => !!(e.target as Element).closest?.("button");
+  zone.addEventListener("pointerdown", (e) => {
+    if (!live() || e.pointerType === "mouse" || onButton(e)) return;
+    e.preventDefault();
+    try { zone.setPointerCapture(e.pointerId); } catch { /* the finger is still tracked without capture */ }
+    const second = fingers.size > 0;
+    fingers.set(e.pointerId, { side: second ? null : sideOf(e.clientX), low: e.clientY });
+    if (second) jump();
+  });
+  zone.addEventListener("pointermove", (e) => {
+    const f = fingers.get(e.pointerId);
+    if (!f) return;
+    e.preventDefault();
+    if (f.side) f.side = sideOf(e.clientX);
+    if (e.clientY > f.low) f.low = e.clientY;
+    else if (f.low - e.clientY > SWIPE_PX) { jump(); f.low = e.clientY; }
+  });
+  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) zone.addEventListener(ev, (e) => fingers.delete((e as PointerEvent).pointerId));
+  zone.addEventListener("contextmenu", (e) => { if (live()) e.preventDefault(); });
+  // Safari would otherwise scroll, zoom or select under a finger that is playing.
+  for (const ev of ["touchstart", "touchmove"]) zone.addEventListener(ev, (e) => { if (live() && !onButton(e)) e.preventDefault(); }, { passive: false });
+
+  const GAME_KEYS = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "];
+  window.addEventListener("keydown", (e) => {
+    if (live() && GAME_KEYS.includes(e.key)) e.preventDefault();
+    if (live() && e.key === "Escape") return preview(rival);
+    if (mode === "over" && e.key === "Enter") return start();
+    keys.add(e.key);
+  });
+  window.addEventListener("keyup", (e) => keys.delete(e.key));
+  window.addEventListener("blur", () => { keys.clear(); fingers.clear(); });
+  $("quit").addEventListener("click", () => preview(rival));
+  $("quit-k").addEventListener("click", () => preview(rival));
+  $("again").addEventListener("click", start);
+  $("share").addEventListener("click", share);
+}
+
+// ---- the overlay on the court
+function overlay(kind: "go" | "count" | "over" | "none", text = "") {
+  const ov = $("ov");
+  ov.replaceChildren();
+  ov.dataset.dim = kind === "go" || kind === "over" ? "1" : "";
+  if (kind === "count") ov.append(Object.assign(document.createElement("span"), { className: "big", textContent: text }));
+  if (kind === "go" || kind === "over") {
+    const box = document.createElement("div");
+    box.className = "over";
+    if (kind === "over") box.append(Object.assign(document.createElement("span"), { className: "big", textContent: text }));
+    const b = document.createElement("button");
+    b.type = "button";
+    b.id = "go";
+    b.innerHTML = `<span></span><small></small>`;
+    b.querySelector("span")!.textContent = kind === "over" ? "▶ AGAIN" : "▶ PLAY";
+    b.querySelector("small")!.textContent = `vs ${rival.label} · Elo ${rival.rating}`;
+    b.addEventListener("click", start);
+    box.append(b);
+    ov.append(box);
+  }
+}
+
+function preview(r: Rival) {
+  rival = r;
+  setMode("preview");
+  fingers.clear();
+  gLeft = SCRIPTED_SLOT;
+  gRight = slotIn(game, r);
+  game.reset(freshSeed());
+  gPts = [0, 0]; gTick = 0; gAcc = 0;
+  overlay("go");
+  $("preview-tag").textContent = r.kind === "coach" ? "preview: the coach plays itself" : `preview: ${r.label} vs the coach`;
+  $("note").textContent = r.note;
+  document.querySelectorAll<HTMLButtonElement>("#rivals button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.id === r.id)));
+  drawGame();
+}
+
+function start() {
+  setMode("countdown");
+  fingers.clear(); keys.clear();
+  gRight = slotIn(game, rival);
+  game.reset(freshSeed());
+  gPts = [0, 0]; gTick = 0; gAcc = 0; jumpUntil = -1;
+  countEnd = performance.now() + 3000; countShown = 0;
+  $("preview-tag").textContent = "";
+  $("share").textContent = "Share my score";
+  $("zone").scrollIntoView({ behavior: "smooth", block: "start" });
+  drawGame();
+}
+
+function stepGame() {
+  const a = mode === "play" ? humanAction() : game.policy(0, gLeft);
+  const won = game.step(a, game.policy(1, gRight));
+  gTick++;
+  if (won > 0) gPts[0]++;
+  else if (won < 0) gPts[1]++;
+}
+
+function drawGame() {
+  const left = mode === "preview" ? "COACH" : "YOU";
+  drawCourt(courtCtx, game.snapshot(), colours, { left, right: rival.label, score: `${gPts[0]} - ${gPts[1]}`, scale: labelScale(courtCtx) });
+}
+
+function over() {
+  setMode("over");
+  const [a, b] = gPts;
+  const s = a > b ? 1 : a < b ? 0 : 0.5;
+  results.push({ id: rival.id, r: rival.rating, s });
+  save();
+  showYou();
+  overlay("over", s === 1 ? "YOU WIN" : s === 0 ? "YOU LOSE" : "DRAW");
+  $("result").textContent = (s === 1 ? `You beat ${rival.label} ${a} - ${b}. Evolution has work to do.` : s === 0 ? `${rival.label} wins ${b} - ${a}.` : `${a} - ${b} when the clock ran out.`) + ` Your Elo: ${yourElo(results)}.`;
+}
+
+async function share() {
+  const [a, b] = gPts;
+  const text = `${a > b ? "I beat" : a < b ? "I lost to" : "I drew with"} ${rival.label} (Elo ${rival.rating}) ${a}-${b} at Darwin Beach, where slimes taught themselves volleyball. My Elo: ${yourElo(results)}. Your turn:`;
+  if (navigator.share) {
+    try { await navigator.share({ title: "Darwin Beach", text, url: SITE }); return; }
+    catch (e) { if ((e as Error).name === "AbortError") return; }
+  }
+  try { await navigator.clipboard.writeText(`${text} ${SITE}`); $("share").textContent = "Copied! Paste it anywhere"; }
+  catch { $("share").textContent = SITE; }
+}
+
+// ---- the viewer's Elo
+type Result = { id: string; r: number; s: number };
+const STORE = "darwin-beach-arcade-v2";
+let results: Result[] = [];
+try { results = JSON.parse(localStorage.getItem(STORE) ?? "[]"); } catch { results = []; }
+const save = () => { try { localStorage.setItem(STORE, JSON.stringify(results)); } catch { /* private window: this visit only */ } };
+
+// The rating that makes the viewer's expected score equal the real one, the bots' ratings held fixed.
+function yourElo(rs: Result[]) {
+  const got = rs.reduce((a, x) => a + x.s, 0);
+  if (!rs.length) return "unrated";
+  if (got === 0) return `below ${Math.min(...rs.map((x) => x.r))}`;
+  if (got === rs.length) return `above ${Math.max(...rs.map((x) => x.r))}`;
+  let lo = -1000, hi = 4000;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    const e = rs.reduce((a, x) => a + 1 / (1 + 10 ** ((x.r - mid) / 400)), 0);
+    if (e < got) lo = mid; else hi = mid;
+  }
+  return `about ${Math.round((lo + hi) / 2)}`;
+}
+
+function showYou() {
+  const w = results.filter((x) => x.s === 1).length;
+  $("you").textContent = results.length
+    ? `Your Elo: ${yourElo(results)} after ${results.length} match${results.length === 1 ? "" : "es"}, ${w} won. The coach is 1000.`
+    : "Your Elo: unrated. Play anyone to get a number. The coach is 1000.";
+  $("you-reset").hidden = !results.length;
+}
+
+function rivals() {
+  const box = $("rivals");
+  for (const r of data.arcade) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.id = r.id;
+    b.innerHTML = `<span class="who"></span><span class="elo"></span>`;
+    b.querySelector(".who")!.textContent = r.label;
+    b.querySelector(".elo")!.textContent = `Elo ${r.rating}`;
+    b.addEventListener("click", () => preview(r));
+    box.append(b);
+  }
+  $("you-reset").addEventListener("click", () => { results = []; save(); showYou(); });
+  showYou();
+}
+
+// ================= the story: stored matches, replayed =================
+let cur = 0, fLeft = 0, fRight = 0, fAcc = 0, speed = 1, advanceAt = 0;
+let fPts: [number, number] = [0, 0];
+let filmPlaying = false, filmFinished = false, filmVisible = false, filmStarted = false;
+
+function filmTick() {
+  const won = theatre.step(theatre.policy(0, fLeft), theatre.policy(1, fRight));
+  if (won > 0) fPts[0]++;
+  else if (won < 0) fPts[1]++;
+}
+
+function drawFilm() {
   const m = data.matches[cur];
-  const names = human ? { left: "YOU", right: human.label } : { left: m.left.label, right: m.right.label };
-  drawCourt(ctx, k.snapshot(), colours, { ...names, score: `${pts[0]} - ${pts[1]}` });
+  drawCourt(filmCtx, theatre.snapshot(), colours, { left: m.left.label, right: m.right.label, score: `${fPts[0]} - ${fPts[1]}`, scale: labelScale(filmCtx) });
 }
 
-function load(i: number) {
+function loadMatch(i: number) {
   cur = i;
-  human = null;
-  $("pad").hidden = true;
+  filmStarted = true;
   const m = data.matches[i];
-  left = slot(m.left);
-  right = slot(m.right);
-  k.reset(BigInt(m.seed), ...(m.holds ?? [1, 1]));
-  pts = [0, 0];
+  fLeft = slotIn(theatre, m.left);
+  fRight = slotIn(theatre, m.right);
+  theatre.reset(BigInt(m.seed), ...(m.holds ?? [1, 1]));
+  fPts = [0, 0];
   // A long match can start just before its moment; the skipped ticks still run, so the hash still checks.
-  for (let t = 0; t < (m.from ?? 0) && !k.done(MAX_TICKS); t++) tick();
-  finished = false; playing = true; acc = 0; advanceAt = 0;
+  for (let t = 0; t < (m.from ?? 0) && !theatre.done(MAX_TICKS); t++) filmTick();
+  filmFinished = false; filmPlaying = true; fAcc = 0; advanceAt = 0;
   $("m-act").textContent = `ACT ${m.act} · ${ACTS[m.act]} · MATCH ${i + 1} OF ${data.matches.length}`;
   $("m-title").textContent = m.title;
   $("m-caption").textContent = m.caption;
@@ -89,8 +294,8 @@ function load(i: number) {
   }));
   verdict("playing", m.from ? `Live on the real engine. Skipped to second ${Math.round(m.from / 30)}, the moment that matters.` : "Live on the real engine, the same one that trained these bots.");
   $("pause").textContent = "Pause";
-  document.querySelectorAll<HTMLButtonElement>("#list button").forEach((b, j) => b.setAttribute("aria-current", String(j === i)));
-  draw();
+  document.querySelectorAll<HTMLButtonElement>("#list button").forEach((x, j) => x.setAttribute("aria-current", String(j === i)));
+  drawFilm();
 }
 
 function verdict(kind: string, text: string) {
@@ -99,34 +304,16 @@ function verdict(kind: string, text: string) {
   v.textContent = text;
 }
 
-function finish() {
-  finished = true;
-  if (human) return finishArcade(human);
+function finishFilm() {
+  filmFinished = true;
   const m = data.matches[cur];
-  const hash = "0x" + k.hash().toString(16).padStart(16, "0");
-  const ok = hash === m.hash && pts[0] === m.points[0] && pts[1] === m.points[1];
-  const time = `${Math.round(k.snapshot().tick / 30)} seconds`;
+  const hash = "0x" + theatre.hash().toString(16).padStart(16, "0");
+  const ok = hash === m.hash && fPts[0] === m.points[0] && fPts[1] === m.points[1];
+  const time = `${Math.round(theatre.snapshot().tick / 30)} seconds`;
   verdict(ok ? "ok" : "bad", ok
-    ? `Final ${pts[0]} - ${pts[1]} after ${time}. Your browser just replayed it bit for bit: fingerprint ${hash} matches the night's record.`
-    : `Final ${pts[0]} - ${pts[1]}, but the fingerprint ${hash} does not match the record ${m.hash}. Something is off.`);
-  if ((document.getElementById("auto") as HTMLInputElement).checked && cur + 1 < data.matches.length) advanceAt = performance.now() + 3000;
-}
-
-function frame(now: number) {
-  const dt = Math.min(250, now - (last || now));
-  last = now;
-  if (playing && !finished) {
-    acc += dt * (human ? 1 : speed);
-    let n = 0;
-    while (acc >= TICK_MS && n++ < 400) {
-      tick();
-      acc -= TICK_MS;
-      if (k.done(MAX_TICKS)) { finish(); break; }
-    }
-    draw();
-  }
-  if (advanceAt && now >= advanceAt) load(cur + 1);
-  requestAnimationFrame(frame);
+    ? `Final ${fPts[0]} - ${fPts[1]} after ${time}. Your browser just replayed it bit for bit: fingerprint ${hash} matches the record.`
+    : `Final ${fPts[0]} - ${fPts[1]}, but the fingerprint ${hash} does not match the record ${m.hash}. Something is off.`);
+  if (($("auto") as HTMLInputElement).checked && cur + 1 < data.matches.length) advanceAt = performance.now() + 3000;
 }
 
 function list() {
@@ -136,7 +323,7 @@ function list() {
     if (m.act !== act) {
       act = m.act;
       const h = document.createElement("li");
-      h.className = "act";
+      h.className = "act kicker";
       h.textContent = `ACT ${act} · ${ACTS[m.act]}`;
       ol.append(h);
     }
@@ -146,122 +333,100 @@ function list() {
     b.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span class="t"></span><span class="who"></span>`;
     b.querySelector(".t")!.textContent = m.title;
     b.querySelector(".who")!.textContent = `${m.left.label} vs ${m.right.label}`;
-    b.addEventListener("click", () => { load(i); canvas.scrollIntoView({ behavior: "smooth", block: "nearest" }); });
+    b.addEventListener("click", () => { loadMatch(i); $("film").scrollIntoView({ behavior: "smooth", block: "nearest" }); });
     li.append(b);
     ol.append(li);
   });
 }
 
-// ---------- the arcade ----------
-type Result = { id: string; r: number; s: number };
-const STORE = "darwin-beach-arcade";
-let results: Result[] = [];
-try { results = JSON.parse(localStorage.getItem(STORE) ?? "[]"); } catch { results = []; }
-const save = () => { try { localStorage.setItem(STORE, JSON.stringify(results)); } catch { /* private window: this visit only */ } };
+// ================= one clock for both courts =================
+function frame(now: number) {
+  const dt = Math.min(250, now - (last || now));
+  last = now;
 
-// The rating that makes the viewer's expected score equal the real one, the bots' ratings held fixed.
-function yourElo(rs: Result[]) {
-  const got = rs.reduce((a, x) => a + x.s, 0);
-  if (!rs.length) return "";
-  if (got === 0) return `below ${Math.min(...rs.map((x) => x.r))}`;
-  if (got === rs.length) return `above ${Math.max(...rs.map((x) => x.r))}`;
-  let lo = -1000, hi = 4000;
-  for (let i = 0; i < 60; i++) {
-    const mid = (lo + hi) / 2;
-    const e = rs.reduce((a, x) => a + 1 / (1 + 10 ** ((x.r - mid) / 400)), 0);
-    if (e < got) lo = mid; else hi = mid;
+  if (mode === "countdown") {
+    const n = Math.ceil((countEnd - now) / 1000);
+    if (n <= 0) { setMode("play"); overlay("none"); }
+    else if (n !== countShown) { countShown = n; overlay("count", String(n)); }
   }
-  return `about ${Math.round((lo + hi) / 2)}`;
-}
-
-function showYou() {
-  const w = results.filter((x) => x.s === 1).length, t = results.filter((x) => x.s === 0.5).length;
-  $("you").textContent = results.length
-    ? `Your Elo: ${yourElo(results)}, after ${results.length} match${results.length === 1 ? "" : "es"} (${w} won${t ? `, ${t} tied` : ""}). The coach is 1000.`
-    : "Your Elo: unrated. Play anyone to get a number.";
-  $("you-reset").hidden = !results.length;
-}
-
-function startArcade(r: Rival) {
-  human = r;
-  left = 0;
-  right = slot(r);
-  const seed = crypto.getRandomValues(new BigUint64Array(1))[0];
-  k.reset(seed);
-  pts = [0, 0];
-  finished = false; playing = true; acc = 0; advanceAt = 0;
-  $("m-act").textContent = `ARCADE · YOU VS ${r.label} · ELO ${r.rating}`;
-  $("m-title").textContent = `You vs ${r.label}`;
-  $("m-caption").textContent = r.note;
-  $("m-board").hidden = true;
-  $("pad").hidden = false;
-  $("pause").textContent = "Pause";
-  document.querySelectorAll<HTMLButtonElement>("#list button").forEach((b) => b.setAttribute("aria-current", "false"));
-  verdict("playing", "You are green, on the left. Arrow keys or A and D to move, Up, W or Space to jump; on a phone, the buttons under the court. First to 5, or the most points when the clock runs out.");
-  canvas.scrollIntoView({ behavior: "smooth", block: "center" });
-  draw();
-}
-
-function finishArcade(r: Rival) {
-  const s = pts[0] > pts[1] ? 1 : pts[0] < pts[1] ? 0 : 0.5;
-  results.push({ id: r.id, r: r.rating, s });
-  save();
-  showYou();
-  const line = s === 1 ? `You beat ${r.label} ${pts[0]} - ${pts[1]}. Evolution has work to do.` : s === 0 ? `${r.label} wins ${pts[1]} - ${pts[0]}.` : `A ${pts[0]} - ${pts[1]} draw on the clock.`;
-  verdict(s === 1 ? "ok" : "bad", `${line} Your Elo is now ${yourElo(results)}.`);
-}
-
-function arcade() {
-  const box = $("rivals");
-  for (const r of data.arcade ?? []) {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.innerHTML = `<span class="who"></span><span class="elo"></span>`;
-    b.querySelector(".who")!.textContent = r.label;
-    b.querySelector(".elo")!.textContent = String(r.rating);
-    b.title = r.note;
-    b.addEventListener("click", () => startArcade(r));
-    box.append(b);
+  if (mode === "play" || (mode === "preview" && courtVisible)) {
+    gAcc += dt;
+    let n = 0;
+    while (gAcc >= TICK_MS && n++ < 30) {
+      gAcc -= TICK_MS;
+      stepGame();
+      if (game.done(MAX_TICKS)) {
+        if (mode === "play") { over(); break; }
+        game.reset(freshSeed()); gPts = [0, 0]; gTick = 0;
+      }
+    }
+    if (gAcc > TICK_MS * 4) gAcc = 0;
+    drawGame();
+    if (mode === "play") padLights();
   }
-  $("you-reset").addEventListener("click", () => { results = []; save(); showYou(); });
-  showYou();
-  const GAME_KEYS = ["ArrowLeft", "ArrowRight", "ArrowUp", " "];
-  window.addEventListener("keydown", (e) => {
-    if (human && GAME_KEYS.includes(e.key)) e.preventDefault();
-    keys.add(e.key);
-  });
-  window.addEventListener("keyup", (e) => keys.delete(e.key));
-  window.addEventListener("blur", () => keys.clear());
-  for (const [id, key] of [["p-left", "left"], ["p-right", "right"], ["p-jump", "jump"]] as const) {
-    const b = $(id);
-    const on = (e: Event) => { e.preventDefault(); pad[key] = true; };
-    const off = (e: Event) => { e.preventDefault(); pad[key] = false; };
-    b.addEventListener("pointerdown", on);
-    for (const ev of ["pointerup", "pointerleave", "pointercancel"]) b.addEventListener(ev, off);
+
+  // The replays rest while the viewer plays.
+  if (filmStarted && filmPlaying && !filmFinished && filmVisible && !live()) {
+    fAcc += dt * speed;
+    let n = 0;
+    while (fAcc >= TICK_MS && n++ < 400) {
+      filmTick();
+      fAcc -= TICK_MS;
+      if (theatre.done(MAX_TICKS)) { finishFilm(); break; }
+    }
+    drawFilm();
   }
+  if (advanceAt && now >= advanceAt && filmVisible) loadMatch(cur + 1);
+  requestAnimationFrame(frame);
+}
+
+function facts() {
+  const f = data.facts;
+  const set = (k: string, v: string) => document.querySelectorAll(`[data-fact="${k}"]`).forEach((e) => { e.textContent = v; });
+  set("matchCount", String(data.matches.length));
+  if (!f) return;
+  set("matchesWords", `${Math.round(f.matches / 1e6)} million`);
+  set("matchesShort", `${Math.round(f.matches / 1e6)}M`);
+  if (f.boss) set("boss", String(f.boss));
 }
 
 async function main() {
+  facts();
   list();
   try {
-    k = await Kernel.load(bytes($("kernel-b64").textContent!));
+    const wasm = bytes($("kernel-b64").textContent!);
+    [game, theatre] = await Promise.all([Kernel.load(wasm), Kernel.load(wasm)]);
   } catch (e) {
-    verdict("bad", `This browser would not start the game engine (${(e as Error).message}).`);
+    $("ov").textContent = `This browser would not start the game engine (${(e as Error).message}).`;
     return;
   }
-  $("pause").addEventListener("click", () => {
-    if (finished) return load(cur);
-    playing = !playing;
-    $("pause").textContent = playing ? "Pause" : "Play";
+  controls();
+  rivals();
+  preview(data.arcade.find((r) => r.kind === "coach") ?? data.arcade[0]);
+
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.target.id === "court") courtVisible = e.isIntersecting;
+      if (e.target.id === "film") {
+        filmVisible = e.isIntersecting;
+        if (filmVisible && !filmStarted) loadMatch(0);
+      }
+    }
   });
-  $("restart").addEventListener("click", () => load(cur));
-  $("next").addEventListener("click", () => load((cur + 1) % data.matches.length));
+  io.observe($("court"));
+  io.observe($("film"));
+
+  $("pause").addEventListener("click", () => {
+    if (!filmStarted || filmFinished) return loadMatch(cur);
+    filmPlaying = !filmPlaying;
+    $("pause").textContent = filmPlaying ? "Pause" : "Play";
+  });
+  $("restart").addEventListener("click", () => loadMatch(cur));
+  $("next").addEventListener("click", () => loadMatch((cur + 1) % data.matches.length));
   $("speed").addEventListener("click", () => {
     speed = speed === 1 ? 2 : speed === 2 ? 4 : 1;
     $("speed").textContent = `${speed}x`;
   });
-  arcade();
-  load(0);
   requestAnimationFrame(frame);
 }
 main();

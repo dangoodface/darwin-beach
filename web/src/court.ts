@@ -17,7 +17,7 @@ export function toScreen(x: number, y: number, w: number, h: number): [number, n
   return [sx, sy];
 }
 
-export function drawCourt(ctx: CanvasRenderingContext2D, s: Snapshot, c: CourtColours, labels?: { left: string; right: string; score?: string }) {
+export function drawCourt(ctx: CanvasRenderingContext2D, s: Snapshot, c: CourtColours, labels?: { left: string; right: string; score?: string; scale?: number }) {
   const { width: w, height: h } = ctx.canvas;
   const unit = w / (VIEW.x1 - VIEW.x0);
   ctx.clearRect(0, 0, w, h);
@@ -55,7 +55,7 @@ export function drawCourt(ctx: CanvasRenderingContext2D, s: Snapshot, c: CourtCo
 
   if (labels) {
     ctx.fillStyle = c.text;
-    ctx.font = `${Math.max(10, Math.round(w / 48))}px "Press Start 2P", monospace`;
+    ctx.font = `${Math.max(10, Math.round((w / 48) * (labels.scale ?? 1)))}px "Press Start 2P", monospace`;
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
     ctx.fillText(labels.left, unit * 0.8, unit * 0.8);

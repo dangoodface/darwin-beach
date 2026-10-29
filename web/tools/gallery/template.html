@@ -1,14 +1,14 @@
-<title>Darwin Beach Replays</title>
+<title>Darwin Beach</title>
 <meta name="claude:viewport-fit-sides" content="cover">
-<meta name="description" content="Matches from one night of evolution, replayed live in your browser by the engine that trained the bots.">
+<meta name="description" content="Slimes that taught themselves volleyball over 800 million matches. Pick one, play it, get your Elo.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  /* One committed night-beach look, the same as the Darwin Beach site. */
+  /* One committed night-beach look. */
   :root {
     color-scheme: dark;
-    --night: #0b1026; --night-2: #131a3a; --sea: #101a44; --rule: #26305e;
+    --night: #0b1026; --night-2: #131a3a; --night-3: #1a2350; --sea: #101a44; --rule: #26305e;
     --ink: #eef3ff; --muted: #9aa6cf; --slime: #39ff9f; --rival: #ff4fc8;
     --sun: #ffc93c; --sand: #d9b26a; --foam: #cfe3ff;
     --display: "Press Start 2P", "Courier New", monospace;
@@ -16,25 +16,92 @@
   }
   * { box-sizing: border-box; }
   html, body { background: var(--night); color: var(--ink); }
-  body { font-family: var(--body); font-size: 14px; line-height: 1.6; }
+  body { margin: 0; font-family: var(--body); font-size: 14px; line-height: 1.6; -webkit-text-size-adjust: 100%; }
   .wrap {
-    max-width: 1080px; margin: 0 auto; display: grid; gap: 22px;
+    max-width: 1080px; margin: 0 auto; display: grid; gap: 28px;
     padding-left: max(16px, env(safe-area-inset-left, 0px));
     padding-right: max(16px, env(safe-area-inset-right, 0px));
-    padding-block: 24px 40px;
+    padding-block: 18px 40px;
   }
+  a { color: var(--sun); }
+  button { font: 500 13px var(--body); color: var(--ink); background: var(--night-2); border: 1px solid var(--rule); padding: 8px 12px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  button:hover { border-color: var(--sun); }
+  button.primary { background: var(--slime); color: var(--night); border-color: var(--slime); font-weight: 700; }
+  :focus-visible { outline: 2px solid var(--sun); outline-offset: 3px; }
+  h2 { font-family: var(--display); font-weight: 400; font-size: clamp(13px, 2.6vw, 20px); line-height: 1.5; margin: 0; text-wrap: balance; }
+  .kicker { font-family: var(--display); font-size: 10px; letter-spacing: 1px; color: var(--muted); margin: 0; }
+
+  /* ---------- hero ---------- */
   header { display: grid; gap: 10px; }
-  h1 { font-family: var(--display); font-weight: 400; margin: 0; font-size: clamp(22px, 5vw, 40px); line-height: 1.2; text-wrap: balance; }
+  h1 { font-family: var(--display); font-weight: 400; margin: 0; font-size: clamp(26px, 7vw, 52px); line-height: 1.1; }
   h1 .d { color: var(--slime); } h1 .b { color: var(--rival); }
-  .tag { margin: 0; max-width: 62ch; font-size: clamp(14px, 2vw, 16px); }
+  .tag { margin: 0; max-width: 60ch; font-size: clamp(14px, 2.2vw, 17px); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .chips li { border: 1px solid var(--rule); background: var(--night-2); padding: 4px 10px; font-size: 12px; color: var(--muted); }
+  .chips b { color: var(--sun); font-weight: 700; }
+
+  /* ---------- the game ---------- */
+  #play { display: grid; gap: 12px; }
+  #zone { display: grid; gap: 10px; }
+  #play[data-mode="play"] #zone, #play[data-mode="countdown"] #zone {
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  }
+  .court { position: relative; }
+  canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 8 / 3; border: 1px solid var(--rule); background: var(--sea); }
+  #ov { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; text-align: center; }
+  #ov > * { pointer-events: auto; }
+  #ov[data-dim="1"] { background: rgba(11, 16, 38, 0.55); }
+  #go { font-family: var(--display); font-size: clamp(14px, 3.6vw, 26px); padding: 0.8em 1.3em; background: var(--slime); color: var(--night); border: 0; box-shadow: 0 0 0 4px rgba(57, 255, 159, 0.25), 0 6px 0 #1a9c63; display: grid; gap: 8px; }
+  #go small { font-family: var(--body); font-size: clamp(11px, 2vw, 13px); font-weight: 700; }
+  #go:active { transform: translateY(3px); box-shadow: 0 0 0 4px rgba(57, 255, 159, 0.25), 0 3px 0 #1a9c63; }
+  .big { font-family: var(--display); font-size: clamp(28px, 9vw, 72px); line-height: 1; color: var(--sun); text-shadow: 0 4px 0 rgba(0, 0, 0, 0.4); pointer-events: none; }
+  #ov .over { display: grid; gap: clamp(6px, 2vw, 16px); justify-items: center; }
+  #ov .over .big { font-size: clamp(18px, 6vw, 52px); }
+  @media (max-width: 600px) { #go { font-size: 13px; padding: 10px 16px; gap: 4px; } #go small { font-size: 11px; } }
+  .preview-tag { position: absolute; left: 8px; bottom: 6px; font-size: 10px; color: var(--muted); pointer-events: none; }
+
+  .panel { display: grid; gap: 12px; }
+  .pick, .pad, .after, .keys { display: none; }
+  #play[data-mode="preview"] .pick, #play[data-mode="over"] .pick { display: grid; gap: 8px; }
+  #play[data-mode="over"] .after { display: grid; gap: 8px; }
+  #play[data-mode="play"] .pad, #play[data-mode="countdown"] .pad { display: grid; }
+
+  #rivals { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; scrollbar-color: var(--rule) transparent; scroll-snap-type: x proximity; -webkit-overflow-scrolling: touch; }
+  #rivals button { flex: 0 0 auto; min-width: 128px; display: grid; gap: 2px; text-align: left; scroll-snap-align: start; padding: 8px 12px; }
+  #rivals .who { font-family: var(--display); font-size: 9px; letter-spacing: 0.5px; }
+  #rivals .elo { color: var(--sun); font-variant-numeric: tabular-nums; font-weight: 700; }
+  #rivals button[aria-pressed="true"] { border-color: var(--slime); background: rgba(57, 255, 159, 0.12); }
+  #rivals button[aria-pressed="true"] .who { color: var(--slime); }
+  #note { margin: 0; color: var(--muted); max-width: 65ch; }
+  .you { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+  #you { margin: 0; font-weight: 700; }
+  #you-reset { font-size: 11px; padding: 4px 8px; color: var(--muted); }
+
+  .pad { grid-template-columns: 1fr 1fr; gap: 8px; height: clamp(150px, 34vh, 320px); position: relative; }
+  .pad div { display: grid; place-items: center; border: 1px dashed var(--rule); background: var(--night-2); font-family: var(--display); font-size: clamp(16px, 5vw, 28px); color: var(--muted); transition: background 60ms; }
+  .pad div[data-on="1"] { background: rgba(57, 255, 159, 0.18); border-color: var(--slime); color: var(--slime); }
+  .pad .jump-hint { position: absolute; left: 50%; top: 10px; transform: translateX(-50%); font-size: 12px; color: var(--ink); background: var(--night-3); border: 1px solid var(--rule); padding: 3px 10px; pointer-events: none; white-space: nowrap; }
+  .pad .jump-hint[data-on="1"] { border-color: var(--sun); color: var(--sun); }
+  .pad .quit { position: absolute; right: 6px; bottom: 6px; font-size: 11px; padding: 4px 8px; }
+  @media (hover: hover) and (pointer: fine) {
+    #play[data-mode="play"] .pad, #play[data-mode="countdown"] .pad { display: none; }
+    #play[data-mode="play"] .keys, #play[data-mode="countdown"] .keys { display: flex; }
+  }
+  .keys { flex-wrap: wrap; gap: 10px; align-items: center; color: var(--muted); }
+  kbd { font: 700 12px var(--body); color: var(--ink); border: 1px solid var(--rule); border-bottom-width: 3px; padding: 2px 7px; background: var(--night-2); }
+  .after p { margin: 0; }
+  #result { font-size: 15px; font-weight: 700; }
+  .after .row { display: flex; flex-wrap: wrap; gap: 8px; }
+
+  /* ---------- the story ---------- */
+  .section { display: grid; gap: 14px; border-top: 2px solid var(--rule); padding-top: 22px; }
+  .section > p { margin: 0; max-width: 65ch; color: var(--muted); }
   .stage { display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 4fr); gap: 22px; align-items: start; }
   .main { display: grid; gap: 12px; min-width: 0; }
-  canvas { display: block; width: 100%; max-width: 100%; aspect-ratio: 8 / 3; border: 1px solid var(--rule); background: var(--sea); }
-  .act { font-family: var(--display); font-size: 10px; letter-spacing: 1px; color: var(--muted); }
   #m-act { margin: 0; }
-  #m-title { font-family: var(--display); font-weight: 400; font-size: clamp(14px, 2.4vw, 20px); color: var(--sun); margin: 0; text-wrap: balance; line-height: 1.4; }
+  #m-title { font-family: var(--display); font-weight: 400; font-size: clamp(13px, 2.4vw, 18px); color: var(--sun); margin: 0; text-wrap: balance; line-height: 1.4; }
   #m-caption { margin: 0; max-width: 65ch; }
-  #m-board { list-style: none; margin: 0; padding: 0; gap: 0; max-width: 65ch; max-height: 260px; overflow-y: auto; border: 1px solid var(--rule); font-size: 12px; }
+  #m-board { list-style: none; margin: 0; padding: 0; max-width: 65ch; max-height: 260px; overflow-y: auto; border: 1px solid var(--rule); font-size: 12px; }
   #m-board li { display: grid; grid-template-columns: 3ch 1fr auto; gap: 10px; padding: 3px 10px; border-bottom: 1px solid var(--rule); color: var(--muted); }
   #m-board li:first-child { color: var(--sun); }
   #m-board li[data-kind="new"] { color: var(--slime); }
@@ -44,82 +111,131 @@
   #verdict[data-kind="ok"]::before { content: "\2713  "; color: var(--slime); font-weight: 700; }
   #verdict[data-kind="bad"] { border-color: var(--rival); color: var(--ink); }
   .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  button { font: 500 13px var(--body); color: var(--ink); background: var(--night-2); border: 1px solid var(--rule); padding: 8px 12px; cursor: pointer; }
-  button:hover { border-color: var(--sun); }
-  button.primary { background: var(--slime); color: var(--night); border-color: var(--slime); font-weight: 700; }
-  :focus-visible { outline: 2px solid var(--sun); outline-offset: 3px; }
   label { font-size: 12px; color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
   input { accent-color: var(--slime); }
-  ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-  ol .act { padding-top: 10px; }
-  ol .act:first-child { padding-top: 0; }
-  ol button { width: 100%; text-align: left; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; padding: 8px 10px; }
-  ol button .n { font-family: var(--display); font-size: 10px; color: var(--muted); grid-row: span 2; padding-top: 4px; }
-  ol button .t { font-weight: 700; }
-  ol button .who { font-size: 11px; color: var(--muted); }
-  ol button[aria-current="true"] { border-color: var(--slime); background: rgba(57, 255, 159, 0.10); }
-  ol button[aria-current="true"] .n { color: var(--slime); }
-  .how { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
-  .how div { border-top: 2px solid var(--rule); padding-top: 10px; }
-  .how b { display: block; font-family: var(--display); font-weight: 400; font-size: 10px; color: var(--slime); margin-bottom: 6px; letter-spacing: 1px; }
-  .how p { margin: 0; color: var(--muted); font-size: 13px; }
+  #list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 640px; overflow-y: auto; }
+  #list .act { padding-top: 10px; }
+  #list .act:first-child { padding-top: 0; }
+  #list button { width: 100%; text-align: left; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 10px; padding: 8px 10px; }
+  #list button .n { font-family: var(--display); font-size: 10px; color: var(--muted); grid-row: span 2; padding-top: 4px; }
+  #list button .t { font-weight: 700; }
+  #list button .who { font-size: 11px; color: var(--muted); }
+  #list button[aria-current="true"] { border-color: var(--slime); background: rgba(57, 255, 159, 0.10); }
+  #list button[aria-current="true"] .n { color: var(--slime); }
+
+  /* ---------- for the nerds ---------- */
+  .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+  .cards div { border-top: 2px solid var(--rule); padding-top: 10px; min-width: 0; }
+  .cards b { display: block; font-family: var(--display); font-weight: 400; font-size: 10px; color: var(--slime); margin-bottom: 8px; letter-spacing: 1px; line-height: 1.5; }
+  .cards p { margin: 0; color: var(--muted); font-size: 13px; }
+  .cards p + p { margin-top: 8px; }
+  .cards em { color: var(--ink); font-style: normal; }
+  .table { overflow-x: auto; border: 1px solid var(--rule); }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; min-width: 600px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-family: var(--display); font-weight: 400; font-size: 9px; color: var(--muted); letter-spacing: 0.5px; }
+  td.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+  td:first-child { color: var(--sun); white-space: nowrap; }
   footer { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--rule); padding-top: 14px; }
-  a { color: var(--sun); }
-  .arcade { display: grid; gap: 12px; border-top: 2px solid var(--rule); padding-top: 16px; }
-  .arcade h2 { font-family: var(--display); font-weight: 400; font-size: clamp(13px, 2.2vw, 18px); color: var(--slime); margin: 0; line-height: 1.5; text-wrap: balance; }
-  .arcade p { margin: 0; max-width: 65ch; color: var(--muted); }
-  #rivals { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
-  #rivals button { display: flex; justify-content: space-between; gap: 8px; text-align: left; }
-  #rivals .elo { color: var(--sun); font-variant-numeric: tabular-nums; }
-  .you-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-  #you { color: var(--ink); font-weight: 700; }
-  #pad { display: grid; grid-template-columns: 1fr 1.4fr 1fr; gap: 8px; touch-action: none; user-select: none; -webkit-user-select: none; }
-  #pad button { padding: 18px 0; font-size: 18px; }
-  #pad #p-jump { background: var(--slime); color: var(--night); border-color: var(--slime); font-weight: 700; }
-  @media (max-width: 820px) { .stage, .how { grid-template-columns: 1fr; } }
+  @media (max-width: 820px) { .stage, .cards { grid-template-columns: 1fr; } }
 </style>
+<!--BODY-->
 <div class="wrap">
   <header>
-    <h1><span class="d">DARWIN</span> <span class="b">BEACH</span> REPLAYS</h1>
-    <p class="tag">One night of evolution, from a random brain to the best bot of the night, then the specialists trained to beat it. Nothing here is a video: your browser runs the same engine that trained these bots and plays each match from its serve.</p>
+    <h1><span class="d">DARWIN</span> <span class="b">BEACH</span></h1>
+    <p class="tag">Nobody taught these slimes volleyball. They started as random numbers and played <span data-fact="matchesWords">800 million</span> matches against each other until they got good. Pick one. See how you do.</p>
+    <ul class="chips">
+      <li><b data-fact="matchesShort">800M</b> matches played</li>
+      <li><b>1,027</b> numbers per brain</li>
+      <li><b>0</b> lines of strategy</li>
+      <li>best bot: Elo <b data-fact="boss">2183</b></li>
+    </ul>
   </header>
-  <div class="stage">
-    <section class="main" aria-labelledby="m-title">
-      <canvas id="court" width="960" height="360" aria-label="The match, played live"></canvas>
-      <div id="pad" hidden>
-        <button type="button" id="p-left" aria-label="Move left">&#9664;</button>
-        <button type="button" id="p-jump">JUMP</button>
-        <button type="button" id="p-right" aria-label="Move right">&#9654;</button>
+
+  <section id="play" data-mode="preview" aria-label="Play a bot">
+    <div id="zone">
+      <div class="court">
+        <canvas id="court" width="960" height="360" aria-label="The court"></canvas>
+        <div id="ov"></div>
+        <span class="preview-tag" id="preview-tag"></span>
       </div>
-      <div class="controls">
-        <button type="button" id="pause">Pause</button>
-        <button type="button" id="restart">Replay</button>
-        <button type="button" id="speed">1x</button>
-        <button type="button" class="primary" id="next">Next match &rarr;</button>
-        <label><input type="checkbox" id="auto" checked> Play the next one automatically</label>
+      <div class="pad" aria-hidden="true">
+        <div id="pad-l">&#9664;</div>
+        <div id="pad-r">&#9654;</div>
+        <span class="jump-hint" id="pad-j">swipe &uarr; to jump</span>
+        <button type="button" class="quit" id="quit">quit</button>
       </div>
-      <p class="act" id="m-act"></p>
-      <h2 id="m-title">Loading the engine&hellip;</h2>
-      <p id="m-caption"></p>
-      <ol id="m-board" hidden aria-label="Elo leaderboard"></ol>
-      <div id="verdict" data-kind="playing" aria-live="polite"></div>
-    </section>
-    <nav aria-label="Matches"><ol id="list"></ol></nav>
-  </div>
-  <section class="arcade" aria-labelledby="arcade-h">
-    <h2 id="arcade-h">YOUR TURN: WHAT IS YOUR ELO?</h2>
-    <p>Pick a rival and play it on the same engine. Every bot here has an Elo from the 30-bot round robin, with the coach fixed at 1000, so every result you get moves your own rating on the same scale. A fresh serve every time, no replays.</p>
-    <div id="rivals"></div>
-    <div class="you-row"><p id="you"></p><button type="button" id="you-reset" hidden>Forget my matches</button></div>
+    </div>
+    <div class="panel">
+      <div class="keys"><span><kbd>&larr;</kbd> <kbd>&rarr;</kbd> move</span><span><kbd>&uarr;</kbd> or <kbd>space</kbd> jump</span><span>You are green. First to 5.</span><button type="button" id="quit-k">quit</button></div>
+      <div class="after"><p id="result"></p><div class="row"><button type="button" class="primary" id="again">Rematch</button><button type="button" id="share">Share my score</button></div></div>
+      <div class="pick">
+        <p class="kicker">PICK YOUR RIVAL &rarr;</p>
+        <div id="rivals" role="group" aria-label="Rivals, easiest first"></div>
+        <p id="note"></p>
+        <div class="you"><p id="you"></p><button type="button" id="you-reset" hidden>reset</button></div>
+      </div>
+    </div>
   </section>
-  <section class="how" aria-label="How these bots learned">
-    <div><b>RANDOM BRAINS</b><p>Every slime starts with a brain of 515 random numbers. Green plays on the left; pink is the coach, a hand-written bot, or another champion.</p></div>
-    <div><b>THE WINNERS HAVE KIDS</b><p>Good players are copied with small changes or mixed with another good player. Hundreds of millions of matches decide who stays.</p></div>
-    <div><b>EXACT REPLAYS</b><p>A match is just a serve and two brains. Replay it anywhere and it lands on the same fingerprint, or the result does not count.</p></div>
+
+  <section class="section" id="story" aria-labelledby="story-h">
+    <p class="kicker">THE STORY</p>
+    <h2 id="story-h">TWO NIGHTS OF EVOLUTION, IN <span data-fact="matchCount">34</span> MATCHES</h2>
+    <p>From the first random brain to the best bot of the round, plus the weird ones. None of this is video: your browser replays each match from its serve on the same engine, and checks that it lands on the same fingerprint.</p>
+    <div class="stage">
+      <div class="main">
+        <canvas id="film" width="960" height="360" aria-label="The match, replayed live"></canvas>
+        <div class="controls">
+          <button type="button" id="pause">Pause</button>
+          <button type="button" id="restart">Replay</button>
+          <button type="button" id="speed">1x</button>
+          <button type="button" class="primary" id="next">Next match &rarr;</button>
+          <label><input type="checkbox" id="auto" checked> autoplay</label>
+        </div>
+        <p class="kicker" id="m-act"></p>
+        <h3 id="m-title">Loading&hellip;</h3>
+        <p id="m-caption"></p>
+        <ol id="m-board" hidden aria-label="Elo leaderboard"></ol>
+        <div id="verdict" data-kind="playing" aria-live="polite"></div>
+      </div>
+      <nav aria-label="Matches"><ol id="list"></ol></nav>
+    </div>
   </section>
+
+  <section class="section" id="nerds" aria-labelledby="nerds-h">
+    <p class="kicker">FOR THE NERDS</p>
+    <h2 id="nerds-h">HOW A RANDOM PILE OF NUMBERS LEARNS VOLLEYBALL</h2>
+    <p>No reinforcement learning, no gradients, no human games to copy. Just evolution: keep what wins, copy it with small mistakes, repeat a few hundred million times.</p>
+    <div class="cards">
+      <div><b>THE BRAIN</b><p>A tiny neural network. <em>12 numbers in</em>: where it is, where the ball is, where the opponent is, and how fast each moves, mirrored so one brain plays either side. <em>64 hidden units</em> (softsign). <em>3 outputs</em>: forward, back, jump, each pressed when its number is above zero.</p><p>That is 1,027 weights. The weights are the whole player: no rules, no code about volleyball.</p></div>
+      <div><b>THE MAP</b><p>Evolution with a map: <em>MAP-Elites</em>. A 20 &times; 20 grid of play styles: how far back on its side a bot plays, and how much of the time it is in the air. Each of the 400 cells keeps the best brain found for that style.</p><p>Children are mutated copies (a little noise on every weight) or mixes of two parents, and a child takes a cell when it scores better than the owner. The map keeps the weird styles alive, which is where the specialists came from.</p></div>
+      <div><b>WHO YOU PLAY</b><p>What a bot learns depends on who it trains against. Night one: a hand-written <em>coach</em>. Then a <em>ladder</em>: past champions, Elo-rated with the coach fixed at 1000.</p><p>In the league, fitness is a soft minimum over the eight hardest opponents, so a bot cannot get rich farming the weak ones, and it must still beat the coach. A new champion has to win 55% head to head against the reigning one.</p></div>
+      <div><b>THE ENGINE</b><p>One physics kernel in Rust, compiled to <em>WebAssembly</em>, after David Ha's slimevolleygym. The trainer (Python, 12 workers, 6,000 to 15,000 matches a second) and this page run the <em>same bytes</em>.</p><p>A match is just a serve (a 64-bit seed) and two brains. Every tick feeds a fingerprint, so a replay, here or there, either lands on the same hash or does not count.</p></div>
+      <div><b>THE SPECIALISTS</b><p>Twenty-minute runs with a rule they cannot break: never jump, always jump, only lobs, only spikes, juggle first, barely move, react like a human (one decision every 0.3 s).</p><p>Each has a <em>twin</em>: the same start and seed with no rule, so the cost of the style is measured, not guessed. Soft and low (the Dinker) loses to everything. Barely moving (Lazy) costs nothing.</p></div>
+      <div><b>THE BIG LESSON</b><p>A twelve-hour league, with exploiters hunting its blind spots, filled the map with 400 strong bots and promoted <em>none</em>. Its best: official Elo 1819.</p><p>Twenty minutes of nudges from the right starting bot, against the top four, made <em>2183</em>: the boss you can play above. The only thing higher is the <em>oracle</em>, a hand-written bot that plans with the game's own physics (2220).</p></div>
+    </div>
+    <h2>RUN BY RUN</h2>
+    <div class="table">
+      <table>
+        <thead><tr><th>RUN</th><th>WHAT CHANGED</th><th>HOURS</th><th>MATCHES</th><th>WHAT HAPPENED</th></tr></thead>
+        <tbody>
+          <tr><td>1</td><td>Random brains, three random sparring partners, the coach as the exam</td><td class="num">1</td><td class="num">52M</td><td>They learned to hit the ball. Nobody beat the coach.</td></tr>
+          <tr><td>2</td><td>The control: same recipe, fresh seed, twice as long</td><td class="num">2</td><td class="num">100M</td><td>The best play the coach even, but nobody beats it on fresh serves.</td></tr>
+          <tr><td>3</td><td>Twice the coach matches per bot</td><td class="num">2</td><td class="num">102M</td><td>Coach still unbeaten. A reinforcement-learning side quest failed too.</td></tr>
+          <tr><td>4</td><td>Smarter breeding (CMA-ME)</td><td class="num">2</td><td class="num">109M</td><td>The coach falls: 201 cells beat it, the best 15 of 16 on fresh serves.</td></tr>
+          <tr><td>5</td><td>A ladder of champions</td><td class="num">2</td><td class="num">106M</td><td>Ten champions in a row. #10 beats the coach nine times in ten.</td></tr>
+          <tr><td>Spec</td><td>Seven specialists with rules, each with a twin</td><td class="num">0.3 each</td><td class="num">&ndash;</td><td>The Flat-Earther's twin becomes king.</td></tr>
+          <tr><td>6</td><td>Everyone on the ladder, weighted by rating</td><td class="num">4</td><td class="num">111M</td><td>No challenger dethrones the twin.</td></tr>
+          <tr><td>7</td><td>Assassins, new styles, a 12-hour league with exploiters</td><td class="num">~14</td><td class="num">217M</td><td>The patched twin reaches 2183. The league promotes nobody.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <footer>
     <span>Built in public: <a href="https://github.com/dangoodface/darwin-beach">github.com/dangoodface/darwin-beach</a></span>
     <span>Physics after slimevolleygym by David Ha.</span>
+    <span>A <a href="https://play.thegoodface.ai">Goodface</a> game.</span>
   </footer>
 </div>
 <script type="application/json" id="gallery-data">/*GALLERY*/</script>

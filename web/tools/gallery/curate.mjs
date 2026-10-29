@@ -354,23 +354,42 @@ act7("The exploiter", exp4, prey4, `Every 45 minutes a fresh bot trained for ten
 act7("Twenty minutes beat twelve hours", ot, patched7, `The top of the verdict: two twenty-minute runs from last night. On the official board the twin patched rates higher; head to head on these serves the One-Touch twin takes ${pc(wr7(ot, patched7))}. At the top, nobody beats everyone, and a day of the map engine did not reach either of them.`, true);
 
 // ---------- the arcade: rated rivals for the viewer ----------
+// Ratings from the official board (the coach fixed at 1000), so the viewer's Elo lands on the same scale.
 const ARCADE = [
-  ["run 5 champion #1", "Run 5's first champion, the lowest-rated bot on the ladder. A gentle start."],
-  ["run 4 champion", "Run 4's champion, the first bot to beat the coach."],
-  ["the coach", "The hand-written bot every run trained against. It never learns, and it never tires."],
-  ["run 5 champion #10", "The best bot of the first night. It beats the coach nine times in ten."],
-  ["kangaroo", "Always in the air."],
-  ["joga bonito", "Juggles half its points before the kill."],
-  ["lob artist", "Slow, hanging balls. The one bot the king cannot handle."],
-  ["flat earther twin", "Rank 1 of 30. Jumps only to hit, then winds up and lunges through the ball."],
+  ["dinker", "DINKER", "Soft and low, every touch. The worst bot on the board. Warm up here."],
+  ["run 5 champion #1", "ROOKIE", "The first champion of night one. It barely knows the game."],
+  ["run 4 champion", "FIRST CHAMP", "The first bot ever to beat the coach."],
+  ["the coach", "COACH", "Hand-written, not evolved. Every bot learned by playing it."],
+  ["run 5 champion #10", "CHAMP #10", "The best bot of night one. Beats the coach nine times in ten."],
+  ["joga bonito", "JOGA BONITO", "Juggles the ball before the kill."],
+  ["lob artist", "LOB ARTIST", "Slow, hanging balls that drive the other bots mad."],
+  ["flat earther twin", "THE TWIN", "Jumps only to hit, winds up and lunges through the ball. King of run 6."],
+  ["lazy", "LAZY", "Barely moves, and still beats the old king 15 of 16."],
+  ["one-touch twin", "ONE-TOUCH TWIN", "Twenty minutes of training from a bot that lost every match to the coach."],
+  ["twin patched", "THE BOSS", "The best bot evolution made: official Elo 2183."],
 ];
-const arcade = ARCADE.map(([l, note]) => [byLabel(l), note]).filter(([e]) => e).map(([e, note]) => {
-  if (e.kind !== "scripted") slot("r6", e.id);
-  return { id: e.id, label: shortName(e), kind: e.kind === "scripted" ? "coach" : "bot", rating: Math.round(e.rating), note };
-}).sort((a, b) => a.rating - b.rating);
+const offByLabel = (l) => l === "the coach" ? { id: COACH, rating: ladder.anchor_rating } : ladder.members.find((m) => m.label === l && m.path) ?? Object.values(offRatings).find((r) => r.label === l);
+const arcade = ARCADE.map(([l, label, note]) => {
+  const e = offByLabel(l);
+  if (!e) return null;
+  if (e.id === COACH) return { id: COACH, label, kind: "coach", rating: Math.round(e.rating), note };
+  const b = readFileSync(e.path), id = basename(e.path, ".bin");
+  brains[id] = b.toString("base64");
+  return { id, label, kind: "bot", rating: Math.round(e.rating), note };
+}).filter(Boolean).sort((a, b) => a.rating - b.rating);
+
+// ---------- the numbers for the header and the nerds ----------
+const runMatches = [...Object.values(RUN), "20261028T130929Z-run7-league"].map((d) => JSON.parse(readFileSync(join(OUT, d, "latest.json"), "utf8")).stats.matches_total);
+const specMatches = specRuns.map((d) => result(d).matches_total ?? 0);
+const facts = {
+  matches: [...runMatches, ...specMatches].reduce((a, b) => a + b, 0),
+  runs: runMatches.length, specialists: specRuns.filter((d) => result(d).elapsed_s >= 600).length,
+  boss: arcade.at(-1)?.rating, members: ladder.members.length,
+};
+console.log("facts", facts);
 
 const args = process.argv.slice(2);
 const out = args[args.indexOf("--out") + 1] ?? "gallery.json";
 const used = Object.fromEntries([...matches.flatMap((m) => [m.left.id, m.right.id]), ...arcade.map((r) => r.id)].filter((id) => id !== COACH).map((id) => [id, brains[id]]));
-writeFileSync(out, JSON.stringify({ kernel: kernelPath, made: new Date().toISOString(), matches, brains: used, arcade }));
+writeFileSync(out, JSON.stringify({ kernel: kernelPath, made: new Date().toISOString(), matches, brains: used, arcade, facts }));
 console.log(`wrote ${out}: ${matches.length} matches, ${Object.keys(used).length} brains`);
