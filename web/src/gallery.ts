@@ -45,79 +45,75 @@ const labelScale = (c: CanvasRenderingContext2D) => Math.min(2, Math.max(1, 560 
 type Mode = "preview" | "countdown" | "play" | "over";
 let mode: Mode = "preview";
 let rival: Rival;
-let gLeft = 0, gRight = 0, gTick = 0, gAcc = 0, jumpUntil = -1, countEnd = 0, countShown = 0;
+let gLeft = 0, gRight = 0, gTick = 0, gAcc = 0, countEnd = 0, countShown = 0;
 let gPts: [number, number] = [0, 0];
 let courtVisible = true;
 const live = () => mode === "play" || mode === "countdown";
 
+// Anything but the preview is full screen, so the page under it must not scroll.
 function setMode(m: Mode) {
   mode = m;
   $("play").dataset.mode = m;
+  document.documentElement.style.overflow = m === "preview" ? "" : "hidden";
 }
 
-// ---- controls: arrow keys on a keyboard; on a phone, hold either half to move, swipe up (or tap a second finger) to jump
+// ---- controls: arrow keys on a keyboard; on a phone, the pad under the court: move on the left, jump on the right
 const keys = new Set<string>();
-const fingers = new Map<number, { side: "l" | "r" | null; low: number }>();
-const SWIPE_PX = 22;
+type PadKey = "l" | "r" | "j";
+const fingers = new Map<number, PadKey>();
 
-function sideOf(x: number): "l" | "r" {
-  const r = $("zone").getBoundingClientRect();
-  return x < r.left + r.width / 2 ? "l" : "r";
+// The pad is a quarter for left, a quarter for right and the right half for jump; a finger can slide between them.
+function padKey(x: number): PadKey {
+  const r = document.querySelector(".pad")!.getBoundingClientRect();
+  const f = (x - r.left) / r.width;
+  return f < 0.25 ? "l" : f < 0.5 ? "r" : "j";
 }
-const holding = (side: "l" | "r") => [...fingers.values()].some((f) => f.side === side);
-function jump() { jumpUntil = gTick + 5; }
+const holding = (k: PadKey) => [...fingers.values()].includes(k);
 
 // The viewer plays the left slime, so forward (towards the net) is to the right.
 function humanAction(): number {
   let a = 0;
   if (keys.has("ArrowRight") || keys.has("d") || keys.has("D") || holding("r")) a |= FORWARD;
   if (keys.has("ArrowLeft") || keys.has("a") || keys.has("A") || holding("l")) a |= BACKWARD;
-  if (keys.has("ArrowUp") || keys.has("w") || keys.has("W") || keys.has(" ") || gTick < jumpUntil) a |= JUMP;
+  if (keys.has("ArrowUp") || keys.has("w") || keys.has("W") || keys.has(" ") || holding("j")) a |= JUMP;
   return a;
 }
 
 function padLights() {
-  $("pad-l").dataset.on = holding("l") ? "1" : "";
-  $("pad-r").dataset.on = holding("r") ? "1" : "";
-  $("pad-j").dataset.on = gTick < jumpUntil ? "1" : "";
+  for (const k of ["l", "r", "j"] as const) $(`pad-${k}`).dataset.on = holding(k) ? "1" : "";
 }
 
 function controls() {
   const zone = $("zone");
+  const pad = document.querySelector<HTMLElement>(".pad")!;
   const onButton = (e: Event) => !!(e.target as Element).closest?.("button");
-  zone.addEventListener("pointerdown", (e) => {
-    if (!live() || e.pointerType === "mouse" || onButton(e)) return;
+  pad.addEventListener("pointerdown", (e) => {
+    if (!live()) return;
     e.preventDefault();
-    try { zone.setPointerCapture(e.pointerId); } catch { /* the finger is still tracked without capture */ }
-    const second = fingers.size > 0;
-    fingers.set(e.pointerId, { side: second ? null : sideOf(e.clientX), low: e.clientY });
-    if (second) jump();
+    try { pad.setPointerCapture(e.pointerId); } catch { /* the finger is still tracked without capture */ }
+    fingers.set(e.pointerId, padKey(e.clientX));
   });
-  zone.addEventListener("pointermove", (e) => {
-    const f = fingers.get(e.pointerId);
-    if (!f) return;
+  pad.addEventListener("pointermove", (e) => {
+    if (!fingers.has(e.pointerId)) return;
     e.preventDefault();
-    if (f.side) f.side = sideOf(e.clientX);
-    if (e.clientY > f.low) f.low = e.clientY;
-    else if (f.low - e.clientY > SWIPE_PX) { jump(); f.low = e.clientY; }
+    fingers.set(e.pointerId, padKey(e.clientX));
   });
-  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) zone.addEventListener(ev, (e) => fingers.delete((e as PointerEvent).pointerId));
-  zone.addEventListener("contextmenu", (e) => { if (live()) e.preventDefault(); });
+  for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) pad.addEventListener(ev, (e) => fingers.delete((e as PointerEvent).pointerId));
+  zone.addEventListener("contextmenu", (e) => { if (mode !== "preview") e.preventDefault(); });
   // Safari would otherwise scroll, zoom or select under a finger that is playing.
-  for (const ev of ["touchstart", "touchmove"]) zone.addEventListener(ev, (e) => { if (live() && !onButton(e)) e.preventDefault(); }, { passive: false });
+  for (const ev of ["touchstart", "touchmove"]) zone.addEventListener(ev, (e) => { if (mode !== "preview" && !onButton(e)) e.preventDefault(); }, { passive: false });
 
   const GAME_KEYS = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "];
   window.addEventListener("keydown", (e) => {
     if (live() && GAME_KEYS.includes(e.key)) e.preventDefault();
-    if (live() && e.key === "Escape") return preview(rival);
+    if (mode !== "preview" && e.key === "Escape") return preview(rival);
     if (mode === "over" && e.key === "Enter") return start();
     keys.add(e.key);
   });
   window.addEventListener("keyup", (e) => keys.delete(e.key));
   window.addEventListener("blur", () => { keys.clear(); fingers.clear(); });
   $("quit").addEventListener("click", () => preview(rival));
-  $("quit-k").addEventListener("click", () => preview(rival));
-  $("again").addEventListener("click", start);
+  $("pick-another").addEventListener("click", () => preview(rival));
   $("share").addEventListener("click", share);
 }
 
@@ -163,11 +159,11 @@ function start() {
   fingers.clear(); keys.clear();
   gRight = slotIn(game, rival);
   game.reset(freshSeed());
-  gPts = [0, 0]; gTick = 0; gAcc = 0; jumpUntil = -1;
+  gPts = [0, 0]; gTick = 0; gAcc = 0;
   countEnd = performance.now() + 3000; countShown = 0;
   $("preview-tag").textContent = "";
   $("share").textContent = "Share my score";
-  $("zone").scrollIntoView({ behavior: "smooth", block: "start" });
+  $("bar-title").textContent = `YOU VS ${rival.label} \u00B7 ELO ${rival.rating}`;
   drawGame();
 }
 
@@ -282,19 +278,24 @@ function loadMatch(i: number) {
   $("m-act").textContent = `ACT ${m.act} · ${ACTS[m.act]} · MATCH ${i + 1} OF ${data.matches.length}`;
   $("m-title").textContent = m.title;
   $("m-caption").textContent = m.caption;
-  const b = $("m-board");
-  b.hidden = !m.board;
-  b.replaceChildren(...(m.board ?? []).map((e) => {
+  const b = $("m-board"), more = $("m-board-more");
+  const board = m.board ?? [];
+  b.hidden = !board.length;
+  more.hidden = board.length <= 10;
+  more.textContent = `Show all ${board.length}`;
+  more.onclick = () => { b.querySelectorAll("li").forEach((li) => { li.hidden = false; }); more.hidden = true; };
+  b.replaceChildren(...board.map((e, n) => {
     const li = document.createElement("li");
     li.dataset.kind = e.kind ?? (e.label === "the coach" ? "coach" : e.label.startsWith("run 6") ? "new" : "");
     li.append(Object.assign(document.createElement("span"), { textContent: String(e.rank) }),
       Object.assign(document.createElement("span"), { textContent: e.label }),
       Object.assign(document.createElement("span"), { textContent: String(e.rating) }));
+    li.hidden = n >= 10;
     return li;
   }));
   verdict("playing", m.from ? `Live on the real engine. Skipped to second ${Math.round(m.from / 30)}, the moment that matters.` : "Live on the real engine, the same one that trained these bots.");
   $("pause").textContent = "Pause";
-  document.querySelectorAll<HTMLButtonElement>("#list button").forEach((x, j) => x.setAttribute("aria-current", String(j === i)));
+  showAct(m.act);
   drawFilm();
 }
 
@@ -316,27 +317,56 @@ function finishFilm() {
   if (($("auto") as HTMLInputElement).checked && cur + 1 < data.matches.length) advanceAt = performance.now() + 3000;
 }
 
-function list() {
-  const ol = $("list");
-  let act = 0;
-  data.matches.forEach((m, i) => {
-    if (m.act !== act) {
-      act = m.act;
-      const h = document.createElement("li");
-      h.className = "act kicker";
-      h.textContent = `ACT ${act} · ${ACTS[m.act]}`;
-      ol.append(h);
-    }
-    const li = document.createElement("li");
+// The story's index: one chip per act, and the chosen act's matches as a short list.
+let shownAct = 0;
+function acts() {
+  const box = $("acts");
+  for (const a of [...new Set(data.matches.map((m) => m.act))]) {
     const b = document.createElement("button");
     b.type = "button";
-    b.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span class="t"></span><span class="who"></span>`;
-    b.querySelector(".t")!.textContent = m.title;
-    b.querySelector(".who")!.textContent = `${m.left.label} vs ${m.right.label}`;
-    b.addEventListener("click", () => { loadMatch(i); $("film").scrollIntoView({ behavior: "smooth", block: "nearest" }); });
-    li.append(b);
-    ol.append(li);
-  });
+    b.dataset.act = String(a);
+    b.textContent = String(a);
+    b.title = ACTS[a];
+    b.addEventListener("click", () => loadMatch(data.matches.findIndex((m) => m.act === a)));
+    box.append(b);
+  }
+}
+
+function showAct(a: Match["act"]) {
+  document.querySelectorAll<HTMLButtonElement>("#acts button").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.act === String(a))));
+  if (a !== shownAct) {
+    shownAct = a;
+    $("act-name").textContent = `ACT ${a} \u00B7 ${ACTS[a]}`;
+    $("list").replaceChildren(...data.matches.map((m, i) => ({ m, i })).filter(({ m }) => m.act === a).map(({ m, i }) => {
+      const li = document.createElement("li");
+      const b = document.createElement("button");
+      b.type = "button";
+      b.dataset.i = String(i);
+      b.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span class="t"></span><span class="who"></span>`;
+      b.querySelector(".t")!.textContent = m.title;
+      b.querySelector(".who")!.textContent = `${m.left.label} vs ${m.right.label}`;
+      b.addEventListener("click", () => { loadMatch(i); $("film").scrollIntoView({ behavior: "smooth", block: "nearest" }); });
+      li.append(b);
+      return li;
+    }));
+  }
+  document.querySelectorAll<HTMLButtonElement>("#list button").forEach((x) => x.setAttribute("aria-current", String(Number(x.dataset.i) === cur)));
+}
+
+// ================= tabs =================
+const TABS = ["play", "story", "nerds"] as const;
+type Tab = (typeof TABS)[number];
+function openTab(t: Tab) {
+  for (const x of TABS) $(`tab-${x}`).hidden = x !== t;
+  document.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === t)));
+  try { history.replaceState(null, "", t === "play" ? location.pathname + location.search : `#${t}`); } catch { /* sandboxed: the tab still opens */ }
+  window.scrollTo(0, 0);
+}
+function tabs() {
+  document.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab as Tab)));
+  document.querySelectorAll<HTMLButtonElement>("[data-go]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.go as Tab)));
+  const h = location.hash.slice(1) as Tab;
+  if (TABS.includes(h)) openTab(h);
 }
 
 // ================= one clock for both courts =================
@@ -392,7 +422,8 @@ function facts() {
 
 async function main() {
   facts();
-  list();
+  acts();
+  tabs();
   try {
     const wasm = bytes($("kernel-b64").textContent!);
     [game, theatre] = await Promise.all([Kernel.load(wasm), Kernel.load(wasm)]);
