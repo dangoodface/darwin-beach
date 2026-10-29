@@ -75,6 +75,20 @@
   #ov .over { display: grid; gap: clamp(6px, 2vw, 16px); justify-items: center; }
   #ov .over .big { font-size: clamp(18px, 6vw, 52px); }
   @media (max-width: 600px) { #go { font-size: 13px; padding: 10px 16px; gap: 4px; } #go small { font-size: 11px; } }
+  .howto { margin: 0; font-size: 12px; color: var(--muted); }
+  .howto .on-keys { display: none; }
+  @media (hover: hover) and (pointer: fine) { .howto .on-touch { display: none; } .howto .on-keys { display: inline; } }
+  #play:not([data-mode="preview"]) .howto { display: none; }
+  /* The story's progress: one tick per match, a gap between acts; bright when replayed and verified. */
+  .progress { display: flex; gap: 2px; height: 6px; }
+  .progress i { flex: 1; background: var(--rule); }
+  .progress i.gap { flex: 0 0 6px; background: none; }
+  .progress i[data-s="ok"] { background: var(--slime); }
+  .progress i[data-s="bad"] { background: var(--rival); }
+  .progress i[data-s="now"] { background: var(--sun); }
+  #next[data-ready="1"] { animation: nudge 1.2s ease-in-out infinite; }
+  @keyframes nudge { 50% { box-shadow: 0 0 0 4px rgba(57, 255, 159, 0.35); } }
+  @media (prefers-reduced-motion: reduce) { #next[data-ready="1"] { animation: none; } }
   .preview-tag { position: absolute; left: 8px; bottom: 6px; font-size: 10px; color: var(--muted); pointer-events: none; }
 
   .bar, .pad, .keys, .after { display: none; }
@@ -245,6 +259,7 @@
         <div id="ov" data-dim="1"><div class="over"><span class="kicker" id="loading">LOADING THE ENGINE&hellip;</span></div></div>
         <span class="preview-tag" id="preview-tag"></span>
       </div>
+      <p class="howto"><span class="on-touch">You are green. Move with &#9664; &#9654; under your left thumb, JUMP under your right. First to 5.</span><span class="on-keys">You are green. Arrow keys move, up or space jumps. First to 5.</span></p>
       <div class="pad" aria-hidden="true">
         <div id="pad-l">&#9664;</div>
         <div id="pad-r">&#9654;</div>
@@ -269,6 +284,7 @@
     <div class="stage">
       <div class="main">
         <canvas id="film" width="960" height="360" aria-label="The match, replayed live"></canvas>
+        <div id="progress" class="progress" aria-hidden="true"></div>
         <div class="controls">
           <button type="button" id="pause">Pause</button>
           <button type="button" id="restart">Replay</button>

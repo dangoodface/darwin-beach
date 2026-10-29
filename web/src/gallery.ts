@@ -277,6 +277,17 @@ function drawFilm() {
   drawCourt(filmCtx, theatre.snapshot(), colours, { left: m.left.label, right: m.right.label, score: `${fPts[0]} - ${fPts[1]}`, scale: labelScale(filmCtx) });
 }
 
+// One tick per match; a match's tick turns green once this browser has replayed and verified it.
+const seen: ("ok" | "bad" | undefined)[] = [];
+function progress() {
+  const box = $("progress");
+  box.replaceChildren(...data.matches.flatMap((m, i) => {
+    const t = document.createElement("i");
+    t.dataset.s = i === cur ? "now" : seen[i] ?? "";
+    return i > 0 && data.matches[i - 1].act !== m.act ? [Object.assign(document.createElement("i"), { className: "gap" }), t] : [t];
+  }));
+}
+
 function loadMatch(i: number) {
   cur = i;
   filmStarted = true;
@@ -288,6 +299,8 @@ function loadMatch(i: number) {
   // A long match can start just before its moment; the skipped ticks still run, so the hash still checks.
   for (let t = 0; t < (m.from ?? 0) && !theatre.done(MAX_TICKS); t++) filmTick();
   filmFinished = false; filmPlaying = true; fAcc = 0; advanceAt = 0;
+  $("next").dataset.ready = "";
+  progress();
   $("m-act").textContent = `ACT ${m.act} · ${ACTS[m.act]} · MATCH ${i + 1} OF ${data.matches.length}`;
   $("m-title").textContent = m.title;
   $("m-caption").textContent = m.caption;
@@ -327,7 +340,14 @@ function finishFilm() {
   verdict(ok ? "ok" : "bad", ok
     ? `Final ${fPts[0]} - ${fPts[1]} after ${time}. Your browser just replayed it bit for bit: fingerprint ${hash} matches the record.`
     : `Final ${fPts[0]} - ${fPts[1]}, but the fingerprint ${hash} does not match the record ${m.hash}. Something is off.`);
-  if (($("auto") as HTMLInputElement).checked && cur + 1 < data.matches.length) advanceAt = performance.now() + 3000;
+  seen[cur] = ok ? "ok" : "bad";
+  progress();
+  const nextUp = data.matches[cur + 1];
+  if (!nextUp) { verdict(ok ? "ok" : "bad", `${$("verdict").textContent} That was the last match: the whole story, verified in your browser.`); return; }
+  if (($("auto") as HTMLInputElement).checked) {
+    advanceAt = performance.now() + 3000;
+    $("verdict").textContent += ` Next: ${nextUp.title}.`;
+  } else $("next").dataset.ready = "1";
 }
 
 // The story's index: one chip per act, and the chosen act's matches as a short list.
