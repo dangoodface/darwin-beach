@@ -319,7 +319,7 @@ function loadMatch(i: number) {
     li.hidden = n >= 10;
     return li;
   }));
-  verdict("playing", m.from ? `Live on the real engine. Skipped to second ${Math.round(m.from / 30)}, the moment that matters.` : "Live on the real engine, the same one that trained these bots.");
+  verdict("playing", m.from ? `Skipped to second ${Math.round(m.from / 30)}, the moment that matters.` : "");
   $("pause").textContent = "Pause";
   showAct(m.act);
   drawFilm();
@@ -378,7 +378,7 @@ function showAct(a: Match["act"]) {
       b.innerHTML = `<span class="n">${String(i + 1).padStart(2, "0")}</span><span class="t"></span><span class="who"></span>`;
       b.querySelector(".t")!.textContent = m.title;
       b.querySelector(".who")!.textContent = `${m.left.label} vs ${m.right.label}`;
-      b.addEventListener("click", () => { loadMatch(i); $("film").scrollIntoView({ behavior: "smooth", block: "nearest" }); });
+      b.addEventListener("click", () => loadMatch(i));
       li.append(b);
       return li;
     }));
@@ -396,6 +396,11 @@ function openTab(t: Tab) {
   window.scrollTo(0, 0);
 }
 function tabs() {
+  // The story's court sticks just under the tab bar, whatever height the bar wraps to.
+  const bar = document.querySelector<HTMLElement>(".tabs")!;
+  const measure = () => document.documentElement.style.setProperty("--tabs-h", `${bar.offsetHeight}px`);
+  measure();
+  window.addEventListener("resize", measure);
   document.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.tab as Tab)));
   document.querySelectorAll<HTMLButtonElement>("[data-go]").forEach((b) => b.addEventListener("click", () => openTab(b.dataset.go as Tab)));
   const h = location.hash.slice(1) as Tab;
