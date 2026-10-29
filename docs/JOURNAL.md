@@ -646,3 +646,53 @@ twins) until about 06:45; queue 7b on v3 (Smooth Operator at hold 9, La
 Clavada, with twins) until about 08:10; the league after. The all-rounder
 and the lob artist still beat the twin; the twin patched does not lose to
 anyone on the board but rung 0.
+
+## Evening, 28 Oct, 19:30: the league, the crash, and what the night was worth
+
+**The league** (`20261028T130929Z-run7-league`, then `20261028T161600Z-run7-league`).
+Started 07:09 on the oracle build with 34 members: run 6's pool, the twin
+patched, the one-touch and lazy twins, Lazy, four assassins, and the 2-tick
+and 4-tick oracle rungs as promotion-only members. Fitness the soft minimum
+over the eight highest-rated members with the coach gate; ladder matches at
+6,000 ticks; an exploiter trained every 45 minutes against the best cell.
+
+At 10:06 it died: the first exploiter to beat its target joined the ladder,
+the store wrote its member row but not its genome, and the exporter crashed
+on the missing parameters at round 3,329. The inbox test had passed because
+its newcomer was a genome the shared test store already held. Fixed in
+063746d (the store keeps a newcomer's genome, the exporter survives a
+missing one and says so, the test drops a genome no store has seen) and
+relaunched at 10:16, warm from the dead run's last export, with that
+exploiter in the pool. Three exploiters joined the relaunched run (1788,
+1793, 1899 on the run's scale); era 3.
+
+Ended 19:16: 8,024 rounds, 157 million matches at 4,854 a second (6,000-tick
+ladder matches and the exploiters' CPU), 400 of 400 cells, 73 lit (beating
+the worst of their eight hardest matchups on average, up from 1 and still
+rising), 252 cells beating the coach. Eighteen promotion checks, all lost,
+the best 49 per cent against the one-touch twin. No promotion.
+
+**The verdicts.** Official board: the league's best cells 1819, 1777, 1755,
+beating 16 to 18 of 31; the twenty-minute recipe's bots 2183 (twin
+patched), 2128 (one-touch twin), 2091 (lazy twin), 2054 (La Clavada), 2020
+(Lazy). Held-out round robin of the run, 44 entrants: one-touch twin 1885
+first, beating 41 of 43; lazy twin, twin patched, the 2-tick oracle, Lazy,
+the 4-tick oracle; the league's elites 13th and 14th.
+
+**What the night was worth.** Not 2500, and not a league champion. The
+honest list: an official board with fixed marks from 868 to 2220 (the
+oracle rungs) and 30 members; kernel v3 with holds and a brain twice as
+wide that plays old genomes bit for bit; the oracle itself, a 2220 nobody
+trained; four bots above 2000 from twenty minutes of nudges each, the twin
+patched first among them; the knowledge that the map engine fills a map of
+400 strong bots and does not catch the top of a ladder in a day, that the
+twin recipe does in twenty minutes, that dinking loses and a 9-tick hold is
+a crushing handicap, that the all-rounder survives its own assassin, and
+that twins of styles that pick the same start are one bot.
+
+**Next, Daniel's call.** The chain (`run7/chain.sh`): twenty minutes from
+the board's best against the board's top eight, rate on the official
+serves, add if measurable and higher, repeat. Smooth Operator at a 3- or
+5-tick hold. Opus's second ply for the oracle's jumping-blocker weakness,
+as a new build with its own rungs. A league that trains the exploiters
+against the ladder's top rather than the map's best cell.
