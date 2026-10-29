@@ -14,6 +14,7 @@ const RUN = {
   r4: "20261027T110547Z-night-r4-cma",
   r5: "20261027T130856Z-night-r5-ladder",
   r6: "20261028T001309Z-run6-definitive",
+  r7: "20261028T161600Z-run7-league",
 };
 const COACH = "scripted-v1";
 const latest = Object.fromEntries(Object.entries(RUN).map(([k, d]) => [k, JSON.parse(readFileSync(join(OUT, d, "latest.json"), "utf8"))]));
@@ -325,6 +326,32 @@ act6("La Clavada", "clavada", "LA CLAVADA", (sc) => sc.find((m) => m.margin > 0)
   const wins = r.rivals.map((x) => `${x.label ?? "the coach"} ${f[x.id]?.won ?? "?"}`).join(", ");
   return `Paid to spike: at least a third of its points had to end a juggle with a hard hit at the net. It spiked ${share} per cent, ${r.final.constraint_satisfied ? "inside the rule" : "so it broke its rule"}. Yet on new serves it beats every rival, out of 16 each: ${wins}.${rating ? ` Official ${rating}.` : ""} A strong bot, a failed style.`;
 });
+
+// ---------- act 7: the league ----------
+// Round 7's league ran all day; its verdict is a round robin of 44 bots on 32 serves the run never used.
+const def7 = JSON.parse(readFileSync(join(OUT, RUN.r7, "definitive.json"), "utf8"));
+const DEF7_SEEDS = def7.seeds.map(BigInt);
+const lb7 = def7.leaderboard, by7 = (l) => lb7.find((e) => e.label === l);
+const ix7 = (e) => def7.matrix.ids.indexOf(e.id), wr7 = (a, b) => def7.matrix.winrate[ix7(a)][ix7(b)];
+const name7 = (e) => e.kind === "scripted" ? "COACH" : e.label.replace(/^run 7 elite (#\d).*/, "RUN 7 $1").replace(/^exploiter-(\d+)-gen\d+$/, "EXPLOITER $1").toUpperCase();
+const side7 = (e) => ({ label: name7(e), kind: e.kind === "scripted" ? "coach" : "bot" });
+const board7 = lb7.map((e) => ({ rank: e.rank, label: e.label, rating: Math.round(e.rating), kind: e.kind === "elite" || e.kind === "exploiter" ? "new" : e.kind === "scripted" || e.kind === "oracle" ? "coach" : "" }));
+const genomeMatch = (e) => e.kind !== "oracle";
+function act7(title, a, b, caption, wantLeftWin, extra = {}) {
+  if (!a || !b || !genomeMatch(a) || !genomeMatch(b)) return;
+  // A real result, not a tie: these bots often play to the time limit.
+  const g = record("r7", a.id, "r7", b.id, DEF7_SEEDS);
+  const decided = g.games.filter(({ g: x }) => (wantLeftWin ? x.points[0] > x.points[1] : x.points[1] > x.points[0])).sort((p, q) => q.g.points[0] + q.g.points[1] - (p.g.points[0] + p.g.points[1]) || p.g.ticks - q.g.ticks);
+  add({ act: 7, title, left: side7(a), right: side7(b), caption }, "r7", a.id, b.id, (decided[0] ?? g.games[0]).s, () => extra);
+}
+const s7 = latest.r7.stats, ot = by7("one-touch twin"), patched7 = by7("twin patched");
+const elites7 = lb7.filter((e) => e.kind === "elite"), best7 = elites7[0];
+const exp4 = lb7.find((e) => /^exploiter-4-/.test(e.label)), prey4 = exp4 && lb7.find((e) => e.kind === "elite" && e.label.includes(`gen ${exp4.label.split("gen").pop()}`));
+const TIE7 = " (64 matches on serves the league never used, a tie counting half)";
+act7("Twelve hours", best7, ot, `The league: ${Math.round(s7.matches_total / 1e6)} million matches in one day, every cell of the map filled, all ${s7.filled} of them better than every run 5 champion and ${s7.beats_coach} beating the coach. Every promotion check failed. Its best brain ranks ${best7.rank}th of ${lb7.length} on the held-out verdict and takes ${pc(wr7(best7, ot))} against the champion${TIE7}. The champion, the One-Touch twin, came from twenty minutes of training last night. The board is that verdict: green is the league's own brains.`, false, { board: board7 });
+act7("It can win", best7, ot, `The same two, on a serve where the league's best gets its way. It wins about one match in three against the champion: close enough to try, not enough to promote.`, true);
+act7("The exploiter", exp4, prey4, `Every 45 minutes a fresh bot trained for ten minutes against the league's best cell, hunting for its blind spot. Exploiter ${exp4?.label.split("-")[1]} was aimed at the best cell of round ${exp4?.label.split("gen").pop()} and takes ${exp4 && prey4 ? pc(wr7(exp4, prey4)) : "most"} against it${TIE7}. It joined the ladder, so the league had to learn to beat it too.`, true);
+act7("Twenty minutes beat twelve hours", ot, patched7, `The top of the verdict: two twenty-minute runs from last night. On the official board the twin patched rates higher; head to head on these serves the One-Touch twin takes ${pc(wr7(ot, patched7))}. At the top, nobody beats everyone, and a day of the map engine did not reach either of them.`, true);
 
 // ---------- the arcade: rated rivals for the viewer ----------
 const ARCADE = [
